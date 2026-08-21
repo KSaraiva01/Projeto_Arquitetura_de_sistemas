@@ -1,0 +1,70 @@
+/* Google Fonts — Fraunces (display) + Outfit (body) */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@import 'tailwindcss';
+
+/* ── Design tokens ───────────────────────────────────────── */
+:root {
+  --background: #f7f5ef;       /* warm off-white page ground */
+  --foreground: #111827;       /* near-black text */
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --sidebar: #0e1f3d;          /* deep navy sidebar */
+  --sidebar-foreground: #e8edf5;
+  --primary: #1a56db;          /* institutional blue */
+  --primary-foreground: #ffffff;
+  --secondary: #e8edf5;
+  --secondary-foreground: #374151;
+  --muted: #f1ede4;
+  --muted-foreground: #6b7280;
+  --accent: #f97316;           /* orange accent for pipeline / highlights */
+  --accent-foreground: #ffffff;
+  --success: #059669;
+  --success-bg: #ecfdf5;
+  --warning: #d97706;
+  --warning-bg: #fffbeb;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --border: #e5e0d4;
+  --ring: #1a56db;
+  --radius: 10px;
+}
+
+/* ── Base ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Outfit', system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Display headings use Fraunces */
+h1, h2, h3, .font-display {
+  font-family: 'Fraunces', Georgia, serif;
+}
+
+/* Hide scrollbars by default, surface on hover */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 99px; }
+*:hover::-webkit-scrollbar-thumb { background: var(--border); }
+
+/* Focus ring */
+*:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Smooth transitions on interactive elements */
+button, a, input, select, textarea {
+  transition: all 0.15s ease;
+}
