@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Lightbulb, Plus, Trash2, ArrowLeft, CheckCircle } from "lucide-react";
+import { Plus, Trash2, ArrowLeft, CheckCircle } from "lucide-react";
+import InfoHubLogo from "@/components/InfoHubLogo";
 import { AREAS } from "@/lib/mock-data";
 
 interface TeamMemberInput {
@@ -125,12 +126,7 @@ export default function CadastroPage() {
           <Link href="/" className="text-gray-400 hover:text-gray-600">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Lightbulb className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-bold text-gray-800">InfoHub</span>
-          </div>
+          <InfoHubLogo size="sm" variant="dark" />
         </div>
       </div>
 

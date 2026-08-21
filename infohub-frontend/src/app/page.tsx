@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Lightbulb, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
+import InfoHubLogo from "@/components/InfoHubLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,15 +38,9 @@ export default function LoginPage() {
           <div className="absolute bottom-20 right-20 w-96 h-96 bg-secondary rounded-full blur-3xl" />
         </div>
         <div className="relative z-10 text-center max-w-md">
-          <div className="w-20 h-20 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-8">
-            <Lightbulb className="w-10 h-10 text-white" />
+          <div className="flex justify-center mb-8">
+            <InfoHubLogo size="lg" variant="light" showTagline />
           </div>
-          <h1 className="text-4xl font-bold mb-2">
-            info<span className="text-primary">Hub</span>
-          </h1>
-          <p className="text-lg text-gray-300 mb-8">
-            Conectando conhecimento, tecnologia & inovação
-          </p>
           <div className="space-y-4 text-left">
             {[
               "Acompanhe sua jornada do início ao InovAMF",
@@ -65,13 +60,8 @@ export default function LoginPage() {
 
       <div className="flex-1 flex items-center justify-center p-6 bg-gray-50">
         <div className="w-full max-w-md">
-          <div className="lg:hidden text-center mb-8">
-            <div className="w-14 h-14 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
-              <Lightbulb className="w-7 h-7 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold">
-              info<span className="text-primary">Hub</span>
-            </h1>
+          <div className="lg:hidden flex justify-center mb-8">
+            <InfoHubLogo size="md" variant="dark" />
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">

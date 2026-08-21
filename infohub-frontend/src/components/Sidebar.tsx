@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Lightbulb,
 } from "lucide-react";
+import InfoHubLogo from "./InfoHubLogo";
 
 const adminLinks = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -30,15 +31,8 @@ export default function Sidebar({ role }: { role: "admin" | "aluno" }) {
   return (
     <aside className="w-64 bg-sidebar-bg text-sidebar-text flex flex-col min-h-screen fixed left-0 top-0 z-30">
       <div className="p-5 border-b border-sidebar-hover">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Lightbulb className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-white leading-tight">InfoHub</h1>
-            <p className="text-xs text-gray-400">InovAMF</p>
-          </div>
-        </div>
+        <InfoHubLogo size="sm" variant="light" />
+        <p className="text-[10px] text-gray-400 mt-0.5 ml-[calc(1.75rem+0.375rem)]">InovAMF</p>
       </div>
 
       <nav className="flex-1 py-4">
