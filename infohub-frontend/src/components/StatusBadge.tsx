@@ -1,33 +1,34 @@
 import { TaskStatus } from "@/lib/types";
 
-const STATUS_CONFIG: Record<TaskStatus, { label: string; classes: string }> = {
-  pendente: { label: "Pendente", classes: "bg-gray-100 text-gray-700" },
-  em_andamento: { label: "Em andamento", classes: "bg-blue-100 text-blue-700" },
-  entregue: { label: "Entregue", classes: "bg-purple-100 text-purple-700" },
-  atrasada: { label: "Atrasada", classes: "bg-red-100 text-red-700" },
-  aprovada: { label: "Aprovada", classes: "bg-green-100 text-green-700" },
-  reprovada: { label: "Ajustar", classes: "bg-orange-100 text-orange-700" },
+const STATUS_CONFIG: Record<TaskStatus, { label: string; bg: string; text: string }> = {
+  pendente:      { label: "Pendente",      bg: "bg-badge-muted-bg",           text: "text-badge-muted-text" },
+  em_andamento:  { label: "Em andamento",  bg: "bg-blue-500/15",             text: "text-blue-600 dark:text-blue-400" },
+  entregue:      { label: "Entregue",      bg: "bg-purple-500/15",           text: "text-purple-600 dark:text-purple-400" },
+  atrasada:      { label: "Atrasada",      bg: "bg-red-500/15",             text: "text-red-600 dark:text-red-400" },
+  aprovada:      { label: "Aprovada",      bg: "bg-green-500/15",           text: "text-green-600 dark:text-green-400" },
+  reprovada:     { label: "Ajustar",       bg: "bg-orange-500/15",          text: "text-orange-600 dark:text-orange-400" },
 };
 
 export default function StatusBadge({ status }: { status: TaskStatus }) {
   const config = STATUS_CONFIG[status];
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.classes}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
       {config.label}
     </span>
   );
 }
 
+const TEAM_STATUS_CONFIG: Record<string, { label: string; bg: string; text: string }> = {
+  ativa:          { label: "Ativa",                  bg: "bg-blue-500/15",    text: "text-blue-600 dark:text-blue-400" },
+  pronta_inovamf: { label: "Pronta para InovAMF",   bg: "bg-green-500/15",   text: "text-green-600 dark:text-green-400" },
+  encaminhada:    { label: "Encaminhada ao InovAMF", bg: "bg-emerald-500/15", text: "text-emerald-600 dark:text-emerald-400" },
+  inativa:        { label: "Inativa",                bg: "bg-badge-muted-bg", text: "text-muted" },
+};
+
 export function TeamStatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; classes: string }> = {
-    ativa: { label: "Ativa", classes: "bg-blue-100 text-blue-700" },
-    pronta_inovamf: { label: "Pronta para InovAMF", classes: "bg-green-100 text-green-700" },
-    encaminhada: { label: "Encaminhada ao InovAMF", classes: "bg-emerald-100 text-emerald-700" },
-    inativa: { label: "Inativa", classes: "bg-gray-100 text-gray-500" },
-  };
-  const c = config[status] ?? config.ativa;
+  const c = TEAM_STATUS_CONFIG[status] ?? TEAM_STATUS_CONFIG.ativa;
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${c.classes}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${c.bg} ${c.text}`}>
       {c.label}
     </span>
   );

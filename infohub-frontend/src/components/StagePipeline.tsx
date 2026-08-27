@@ -23,7 +23,7 @@ export default function StagePipeline({ currentStage, compact }: StagePipelinePr
                     ? "bg-success text-white"
                     : isCurrent
                     ? "bg-primary text-white"
-                    : "bg-gray-200 text-gray-500"
+                    : "bg-badge-muted-bg text-muted"
                 }`}
               >
                 {isCompleted ? <Check className="w-4 h-4" /> : stage}
@@ -31,7 +31,7 @@ export default function StagePipeline({ currentStage, compact }: StagePipelinePr
               {!compact && (
                 <span
                   className={`text-[10px] mt-1 text-center leading-tight max-w-[80px] ${
-                    isCurrent ? "text-primary font-semibold" : "text-gray-400"
+                    isCurrent ? "text-primary font-semibold" : "text-muted-light"
                   }`}
                 >
                   {STAGE_NAMES[stage]}
@@ -41,7 +41,7 @@ export default function StagePipeline({ currentStage, compact }: StagePipelinePr
             {idx < stages.length - 1 && (
               <div
                 className={`h-0.5 flex-1 min-w-[12px] ${
-                  isCompleted ? "bg-success" : "bg-gray-200"
+                  isCompleted ? "bg-success" : "bg-divider"
                 }`}
               />
             )}
