@@ -29,21 +29,21 @@ export default function TarefasAdminPage() {
       <div className="p-6">
         <div className="flex flex-col sm:flex-row gap-3 mb-4">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-light" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar tarefa ou equipe..."
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              className="w-full pl-9 pr-4 py-2.5 bg-input-bg border border-input-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
           </div>
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-gray-400" />
+            <Filter className="w-4 h-4 text-muted-light" />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as TaskStatus | "")}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/30"
+              className="px-3 py-2 border border-input-border rounded-lg text-sm bg-input-bg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
               <option value="">Todos os status</option>
               <option value="pendente">Pendente</option>
@@ -56,47 +56,47 @@ export default function TarefasAdminPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="bg-card rounded-xl border border-card-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Tarefa</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Equipe</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Etapa</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Prazo</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Arquivos</th>
+                <tr className="bg-table-header border-b border-card-border">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase">Tarefa</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase">Equipe</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase">Etapa</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase">Prazo</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase">Status</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-muted uppercase">Arquivos</th>
                 </tr>
               </thead>
               <tbody>
                 {tasks.map((task) => (
-                  <tr key={task.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={task.id} className="border-b border-divider hover:bg-card-hover">
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-800">{task.title}</p>
-                      <p className="text-xs text-gray-500 line-clamp-1">{task.description}</p>
+                      <p className="text-sm font-medium text-foreground">{task.title}</p>
+                      <p className="text-xs text-muted line-clamp-1">{task.description}</p>
                     </td>
                     <td className="px-4 py-3">
                       <Link href={`/admin/equipes/${task.teamId}`} className="text-sm text-primary hover:text-primary-dark">
                         {task.teamName}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{STAGE_NAMES[task.stage]}</td>
+                    <td className="px-4 py-3 text-sm text-muted">{STAGE_NAMES[task.stage]}</td>
                     <td className="px-4 py-3">
-                      <span className="flex items-center gap-1 text-sm text-gray-600">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="flex items-center gap-1 text-sm text-muted">
+                        <Calendar className="w-3.5 h-3.5 text-muted-light" />
                         {task.dueDate}
                       </span>
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={task.status} /></td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{task.files.length}</td>
+                    <td className="px-4 py-3 text-sm text-muted">{task.files.length}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           {tasks.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">Nenhuma tarefa encontrada</p>
+            <p className="text-sm text-muted-light text-center py-8">Nenhuma tarefa encontrada</p>
           )}
         </div>
       </div>
