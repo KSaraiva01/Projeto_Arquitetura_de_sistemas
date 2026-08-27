@@ -32,17 +32,13 @@ export const mockTeams: Team[] = [
       id: "aluno-1",
       name: "Lucas Oliveira",
       email: "lucas@aluno.amf.edu.br",
-      phone: "(55) 99123-4567",
       course: "Sistemas de Informação",
-      semester: "6º",
     },
     members: [
-      { id: "m1", name: "Fernanda Lima", course: "Design" },
-      { id: "m2", name: "João Pedro Martins", course: "Administração" },
+      { id: "m1", name: "Fernanda Lima", email: "fernanda@aluno.amf.edu.br", course: "Design" },
+      { id: "m2", name: "João Pedro Martins", email: "joao@aluno.amf.edu.br", course: "Administração" },
     ],
-    mentorId: "mentor-1",
     createdAt: "2026-03-15",
-    howFound: "Indicação de professor",
   },
   {
     id: "team-2",
@@ -56,16 +52,12 @@ export const mockTeams: Team[] = [
       id: "aluno-2",
       name: "Mariana Santos",
       email: "mariana@aluno.amf.edu.br",
-      phone: "(55) 99234-5678",
       course: "Administração",
-      semester: "4º",
     },
     members: [
-      { id: "m3", name: "Carlos Eduardo Pinto", course: "Sistemas de Informação" },
+      { id: "m3", name: "Carlos Eduardo Pinto", email: "carloseduardo@aluno.amf.edu.br", course: "Sistemas de Informação" },
     ],
-    mentorId: "mentor-2",
     createdAt: "2026-04-02",
-    howFound: "Redes sociais",
   },
   {
     id: "team-3",
@@ -79,18 +71,14 @@ export const mockTeams: Team[] = [
       id: "aluno-3",
       name: "Pedro Henrique Costa",
       email: "pedro@aluno.amf.edu.br",
-      phone: "(55) 99345-6789",
       course: "Engenharia de Software",
-      semester: "7º",
     },
     members: [
-      { id: "m4", name: "Ana Clara Souza", course: "Agronomia" },
-      { id: "m5", name: "Rafael Torres", course: "Engenharia Elétrica" },
-      { id: "m6", name: "Isabela Rocha", course: "Design" },
+      { id: "m4", name: "Ana Clara Souza", email: "anaclara@aluno.amf.edu.br", course: "Agronomia" },
+      { id: "m5", name: "Rafael Torres", email: "rafael@aluno.amf.edu.br", course: "Engenharia Elétrica" },
+      { id: "m6", name: "Isabela Rocha", email: "isabela@aluno.amf.edu.br", course: "Design" },
     ],
-    mentorId: "mentor-1",
     createdAt: "2026-02-20",
-    howFound: "Evento na faculdade",
   },
   {
     id: "team-4",
@@ -104,14 +92,10 @@ export const mockTeams: Team[] = [
       id: "aluno-4",
       name: "Gabriela Mendes",
       email: "gabriela@aluno.amf.edu.br",
-      phone: "(55) 99456-7890",
       course: "Ciências Contábeis",
-      semester: "3º",
     },
     members: [],
-    mentorId: null,
     createdAt: "2026-08-10",
-    howFound: "Site da faculdade",
   },
   {
     id: "team-5",
@@ -125,16 +109,12 @@ export const mockTeams: Team[] = [
       id: "aluno-5",
       name: "Thiago Nascimento",
       email: "thiago@aluno.amf.edu.br",
-      phone: "(55) 99567-8901",
       course: "Sistemas de Informação",
-      semester: "5º",
     },
     members: [
-      { id: "m7", name: "Camila Andrade", course: "Pedagogia" },
+      { id: "m7", name: "Camila Andrade", email: "camila@aluno.amf.edu.br", course: "Pedagogia" },
     ],
-    mentorId: "mentor-2",
     createdAt: "2026-05-18",
-    howFound: "Indicação de colega",
   },
   {
     id: "team-6",
@@ -148,16 +128,12 @@ export const mockTeams: Team[] = [
       id: "aluno-6",
       name: "Juliana Ferreira",
       email: "juliana@aluno.amf.edu.br",
-      phone: "(55) 99678-9012",
       course: "Administração",
-      semester: "6º",
     },
     members: [
-      { id: "m8", name: "Bruno Almeida", course: "Logística" },
+      { id: "m8", name: "Bruno Almeida", email: "bruno@aluno.amf.edu.br", course: "Logística" },
     ],
-    mentorId: null,
     createdAt: "2026-07-05",
-    howFound: "Instagram",
   },
   {
     id: "team-7",
@@ -171,17 +147,13 @@ export const mockTeams: Team[] = [
       id: "aluno-7",
       name: "Amanda Ribeiro",
       email: "amanda@aluno.amf.edu.br",
-      phone: "(55) 99789-0123",
       course: "Psicologia",
-      semester: "8º",
     },
     members: [
-      { id: "m9", name: "Diego Monteiro", course: "Sistemas de Informação" },
-      { id: "m10", name: "Letícia Barbosa", course: "Psicologia" },
+      { id: "m9", name: "Diego Monteiro", email: "diego@aluno.amf.edu.br", course: "Sistemas de Informação" },
+      { id: "m10", name: "Letícia Barbosa", email: "leticia@aluno.amf.edu.br", course: "Psicologia" },
     ],
-    mentorId: "mentor-1",
     createdAt: "2026-01-10",
-    howFound: "Indicação de professor",
   },
   {
     id: "team-8",
@@ -195,14 +167,10 @@ export const mockTeams: Team[] = [
       id: "aluno-8",
       name: "Felipe Cardoso",
       email: "felipe@aluno.amf.edu.br",
-      phone: "(55) 99890-1234",
       course: "Engenharia de Software",
-      semester: "2º",
     },
     members: [],
-    mentorId: null,
     createdAt: "2026-08-18",
-    howFound: "Evento na faculdade",
   },
 ];
 
@@ -351,6 +319,16 @@ export const mockNotes: MentorNote[] = [
   },
 ];
 
+export const mockMentorTeams: Record<string, string[]> = {
+  "mentor-1": ["team-1", "team-3", "team-5", "team-7"],
+  "mentor-2": ["team-2", "team-4", "team-6", "team-8"],
+};
+
+export function getTeamsByMentor(mentorId: string): Team[] {
+  const teamIds = mockMentorTeams[mentorId] ?? [];
+  return mockTeams.filter((t) => teamIds.includes(t.id));
+}
+
 export function getTeamsByStage(stage: JourneyStage): Team[] {
   return mockTeams.filter((t) => t.currentStage === stage);
 }
@@ -363,10 +341,8 @@ export function getNotesByTeam(teamId: string): MentorNote[] {
   return mockNotes.filter((n) => n.teamId === teamId);
 }
 
-export function getMentorName(mentorId: string | null): string {
-  if (!mentorId) return "Não atribuído";
-  const mentor = mockUsers.find((u) => u.id === mentorId);
-  return mentor?.name ?? "Desconhecido";
+export function getMentors(): User[] {
+  return mockUsers.filter((u) => u.role === "mentor");
 }
 
 export function getOverdueTasks(): Task[] {

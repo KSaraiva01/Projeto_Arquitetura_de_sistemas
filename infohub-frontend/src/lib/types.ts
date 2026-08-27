@@ -53,6 +53,7 @@ export const IDEA_STAGE_LABELS: Record<IdeaStage, string> = {
 export interface TeamMember {
   id: string;
   name: string;
+  email: string;
   course: string;
 }
 
@@ -68,14 +69,10 @@ export interface Team {
     id: string;
     name: string;
     email: string;
-    phone: string;
     course: string;
-    semester: string;
   };
   members: TeamMember[];
-  mentorId: string | null;
   createdAt: string;
-  howFound: string;
 }
 
 export interface Task {
