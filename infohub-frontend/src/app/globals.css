@@ -1,36 +1,84 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #1e293b;
-  --primary: #e84c30;
-  --primary-dark: #c7391f;
-  --primary-light: #fef2f0;
-  --secondary: #3b82f6;
-  --secondary-dark: #2563eb;
-  --accent: #f97316;
-  --success: #22c55e;
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --primary-light: #eff6ff;
+  --secondary: #6366f1;
+  --secondary-dark: #4f46e5;
+  --accent: #f59e0b;
+  --success: #16a34a;
   --warning: #eab308;
+  --danger: #dc2626;
+
+  --background: #f8fafc;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-border: #e5e7eb;
+  --card-hover: #f9fafb;
+  --muted: #6b7280;
+  --muted-light: #9ca3af;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --table-header: #f9fafb;
+  --badge-muted-bg: #f3f4f6;
+  --badge-muted-text: #4b5563;
+  --hover-bg: #f3f4f6;
+  --kanban-col-bg: #f3f4f6;
+  --kanban-col-border: #e5e7eb;
+  --divider: #e5e7eb;
+  --highlight-bg: #eff6ff;
+
+  --sidebar-bg: #111827;
+  --sidebar-text: #d1d5db;
+  --sidebar-hover: #1f2937;
+  --sidebar-active-bg: #2563eb;
+  --sidebar-active-text: #ffffff;
+  --sidebar-border: #1f2937;
+
+  --scrollbar-thumb: #d1d5db;
+}
+
+.dark {
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --primary-light: #1e3a5f;
+  --secondary: #818cf8;
+  --secondary-dark: #6366f1;
+  --accent: #f59e0b;
+  --success: #22c55e;
+  --warning: #facc15;
   --danger: #ef4444;
-  --gray-50: #f8fafc;
-  --gray-100: #f1f5f9;
-  --gray-200: #e2e8f0;
-  --gray-300: #cbd5e1;
-  --gray-400: #94a3b8;
-  --gray-500: #64748b;
-  --gray-600: #475569;
-  --gray-700: #334155;
-  --gray-800: #1e293b;
-  --gray-900: #0f172a;
-  --sidebar-bg: #1e293b;
-  --sidebar-text: #e2e8f0;
-  --sidebar-hover: #334155;
-  --sidebar-active: #e84c30;
+
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --card: #1e293b;
+  --card-border: #334155;
+  --card-hover: #253449;
+  --muted: #94a3b8;
+  --muted-light: #64748b;
+  --input-bg: #1e293b;
+  --input-border: #475569;
+  --table-header: #1e293b;
+  --badge-muted-bg: #334155;
+  --badge-muted-text: #cbd5e1;
+  --hover-bg: #253449;
+  --kanban-col-bg: #1e293b;
+  --kanban-col-border: #334155;
+  --divider: #334155;
+  --highlight-bg: #1e3a5f;
+
+  --sidebar-bg: #0a0f1a;
+  --sidebar-text: #94a3b8;
+  --sidebar-hover: #1e293b;
+  --sidebar-active-bg: #3b82f6;
+  --sidebar-active-text: #ffffff;
+  --sidebar-border: #1e293b;
+
+  --scrollbar-thumb: #475569;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --color-primary: var(--primary);
   --color-primary-dark: var(--primary-dark);
   --color-primary-light: var(--primary-light);
@@ -40,20 +88,29 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
-  --color-gray-50: var(--gray-50);
-  --color-gray-100: var(--gray-100);
-  --color-gray-200: var(--gray-200);
-  --color-gray-300: var(--gray-300);
-  --color-gray-400: var(--gray-400);
-  --color-gray-500: var(--gray-500);
-  --color-gray-600: var(--gray-600);
-  --color-gray-700: var(--gray-700);
-  --color-gray-800: var(--gray-800);
-  --color-gray-900: var(--gray-900);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-card-hover: var(--card-hover);
+  --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
+  --color-input-bg: var(--input-bg);
+  --color-input-border: var(--input-border);
+  --color-table-header: var(--table-header);
+  --color-badge-muted-bg: var(--badge-muted-bg);
+  --color-badge-muted-text: var(--badge-muted-text);
+  --color-hover-bg: var(--hover-bg);
+  --color-kanban-col-bg: var(--kanban-col-bg);
+  --color-kanban-col-border: var(--kanban-col-border);
+  --color-divider: var(--divider);
+  --color-highlight-bg: var(--highlight-bg);
   --color-sidebar-bg: var(--sidebar-bg);
   --color-sidebar-text: var(--sidebar-text);
   --color-sidebar-hover: var(--sidebar-hover);
-  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-bg: var(--sidebar-active-bg);
+  --color-sidebar-active-text: var(--sidebar-active-text);
+  --color-sidebar-border: var(--sidebar-border);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -66,5 +123,5 @@ body {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--gray-300) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
