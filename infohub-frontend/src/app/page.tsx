@@ -77,6 +77,9 @@ export default function LoginPage() {
       {/* Hero */}
       <section className="pt-28 pb-16 px-6">
         <div className="max-w-6xl mx-auto text-center">
+          <div className="flex justify-center mb-6">
+            <InfoHubLogo size="lg" showTagline />
+          </div>
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full mb-6">
             <Rocket className="w-3.5 h-3.5" />
             Faculdade Antonio Meneghetti
@@ -244,7 +247,7 @@ export default function LoginPage() {
       {/* Footer */}
       <footer className="py-8 px-6 border-t border-card-border bg-card">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <InfoHubLogo size="sm" />
+          <InfoHubLogo size="sm" showTagline />
           <p className="text-xs text-muted-light">
             &copy; {new Date().getFullYear()} Faculdade Antonio Meneghetti. Todos os direitos reservados.
           </p>

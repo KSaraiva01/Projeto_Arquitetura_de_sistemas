@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --primary-light: #eff6ff;
-  --secondary: #6366f1;
-  --secondary-dark: #4f46e5;
-  --accent: #f59e0b;
+  --primary: #E53525;
+  --primary-dark: #CC2E20;
+  --primary-light: #FEF2F1;
+  --secondary: #F5A623;
+  --secondary-dark: #E09515;
+  --accent: #F5A623;
   --success: #16a34a;
   --warning: #eab308;
   --danger: #dc2626;
@@ -27,25 +27,28 @@
   --kanban-col-bg: #f3f4f6;
   --kanban-col-border: #e5e7eb;
   --divider: #e5e7eb;
-  --highlight-bg: #eff6ff;
+  --highlight-bg: #FEF2F1;
 
-  --sidebar-bg: #111827;
+  --sidebar-bg: #1a1a2e;
   --sidebar-text: #d1d5db;
-  --sidebar-hover: #1f2937;
-  --sidebar-active-bg: #2563eb;
+  --sidebar-hover: #2a2a42;
+  --sidebar-active-bg: #E53525;
   --sidebar-active-text: #ffffff;
-  --sidebar-border: #1f2937;
+  --sidebar-border: #2a2a42;
+
+  --logo-info: #555555;
+  --logo-hub: #E53525;
 
   --scrollbar-thumb: #d1d5db;
 }
 
 .dark {
-  --primary: #3b82f6;
-  --primary-dark: #2563eb;
-  --primary-light: #1e3a5f;
-  --secondary: #818cf8;
-  --secondary-dark: #6366f1;
-  --accent: #f59e0b;
+  --primary: #EF5545;
+  --primary-dark: #E53525;
+  --primary-light: #3A1A16;
+  --secondary: #F5A623;
+  --secondary-dark: #E09515;
+  --accent: #F5A623;
   --success: #22c55e;
   --warning: #facc15;
   --danger: #ef4444;
@@ -66,14 +69,17 @@
   --kanban-col-bg: #1e293b;
   --kanban-col-border: #334155;
   --divider: #334155;
-  --highlight-bg: #1e3a5f;
+  --highlight-bg: #3A1A16;
 
   --sidebar-bg: #0a0f1a;
   --sidebar-text: #94a3b8;
   --sidebar-hover: #1e293b;
-  --sidebar-active-bg: #3b82f6;
+  --sidebar-active-bg: #EF5545;
   --sidebar-active-text: #ffffff;
   --sidebar-border: #1e293b;
+
+  --logo-info: #d1d5db;
+  --logo-hub: #EF5545;
 
   --scrollbar-thumb: #475569;
 }
@@ -111,6 +117,8 @@
   --color-sidebar-active-bg: var(--sidebar-active-bg);
   --color-sidebar-active-text: var(--sidebar-active-text);
   --color-sidebar-border: var(--sidebar-border);
+  --color-logo-info: var(--logo-info);
+  --color-logo-hub: var(--logo-hub);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
