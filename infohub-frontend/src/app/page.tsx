@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Rocket, Users, ClipboardCheck, BarChart3, ArrowRight, CheckCircle } from "lucide-react";
+import { Eye, EyeOff, Rocket, Users, ClipboardCheck, BarChart3, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import InfoHubLogo from "@/components/InfoHubLogo";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -41,7 +41,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"admin" | "aluno" | "mentor">("aluno");
+  const [role, setRole] = useState<"admin" | "aluno" | "mentor" | "integrante">("aluno");
   const [error, setError] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
@@ -160,19 +160,25 @@ export default function LoginPage() {
           </div>
 
           <div className="bg-card rounded-2xl border border-card-border p-8 shadow-sm">
-            <div className="flex bg-hover-bg rounded-lg p-1 mb-6">
-              {(["aluno", "mentor", "admin"] as const).map((r) => (
+            <div className="grid grid-cols-2 gap-1 bg-hover-bg rounded-lg p-1 mb-6">
+              {(["aluno", "integrante", "mentor", "admin"] as const).map((r) => (
                 <button
                   key={r}
                   type="button"
                   onClick={() => setRole(r)}
-                  className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${
+                  className={`py-2 text-xs sm:text-sm font-medium rounded-md transition-all ${
                     role === r
                       ? "bg-card text-foreground shadow-sm"
                       : "text-muted"
                   }`}
                 >
-                  {r === "aluno" ? "Aluno" : r === "mentor" ? "Mentor" : "Administrador"}
+                  {r === "aluno"
+                    ? "Aluno (líder)"
+                    : r === "integrante"
+                    ? "Integrante"
+                    : r === "mentor"
+                    ? "Mentor"
+                    : "Administrador"}
                 </button>
               ))}
             </div>

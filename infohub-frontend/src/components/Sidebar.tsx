@@ -30,15 +30,22 @@ const studentLinks = [
   { href: "/aluno/tarefas", label: "Minhas Tarefas", icon: ClipboardList },
 ];
 
+const memberLinks = [
+  { href: "/integrante", label: "Minha Jornada", icon: Lightbulb },
+  { href: "/integrante/tarefas", label: "Minhas Tarefas", icon: ClipboardList },
+];
+
 const roleLabels = {
   admin: "Administrador",
   mentor: "Mentor",
-  aluno: "Aluno",
+  aluno: "Aluno (líder)",
+  integrante: "Integrante de equipe",
 };
 
-export default function Sidebar({ role }: { role: "admin" | "aluno" | "mentor" }) {
+export default function Sidebar({ role }: { role: "admin" | "aluno" | "mentor" | "integrante" }) {
   const pathname = usePathname();
-  const links = role === "admin" ? adminLinks : role === "mentor" ? mentorLinks : studentLinks;
+  const links =
+    role === "admin" ? adminLinks : role === "mentor" ? mentorLinks : role === "integrante" ? memberLinks : studentLinks;
 
   return (
     <aside className="w-64 bg-sidebar-bg text-sidebar-text flex flex-col min-h-screen fixed left-0 top-0 z-30">
@@ -56,7 +63,11 @@ export default function Sidebar({ role }: { role: "admin" | "aluno" | "mentor" }
         {links.map((link) => {
           const isActive =
             pathname === link.href ||
-            (link.href !== "/admin" && link.href !== "/aluno" && link.href !== "/mentor" && pathname.startsWith(link.href));
+            (link.href !== "/admin" &&
+              link.href !== "/aluno" &&
+              link.href !== "/mentor" &&
+              link.href !== "/integrante" &&
+              pathname.startsWith(link.href));
           return (
             <Link
               key={link.href}

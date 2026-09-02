@@ -4,21 +4,27 @@ import { useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import { TeamStatusBadge } from "@/components/StatusBadge";
-import StagePipeline from "@/components/StagePipeline";
-import { mockTeams, mockTasks } from "@/lib/mock-data";
-import { JourneyStage, STAGE_NAMES, Team } from "@/lib/types";
+import { mockTeams, mockTasks, COURSES, getMentors, getMentorIdForTeam } from "@/lib/mock-data";
+import { JourneyStage, STAGE_NAMES, Team, TaskStatus } from "@/lib/types";
 import { Users, AlertTriangle, CheckCircle, Clock, ChevronRight, Filter } from "lucide-react";
 
 export default function AdminDashboard() {
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
   const [filterArea, setFilterArea] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterCourse, setFilterCourse] = useState("");
+  const [filterMentor, setFilterMentor] = useState("");
+  const [filterTaskStatus, setFilterTaskStatus] = useState<TaskStatus | "">("");
 
   const stages: JourneyStage[] = [1, 2, 3, 4, 5, 6];
+  const mentors = getMentors();
 
   const filteredTeams = mockTeams.filter((t) => {
     if (filterArea && t.area !== filterArea) return false;
     if (filterStatus && t.status !== filterStatus) return false;
+    if (filterCourse && t.leader.course !== filterCourse) return false;
+    if (filterMentor && getMentorIdForTeam(t.id) !== filterMentor) return false;
+    if (filterTaskStatus && !mockTasks.some((task) => task.teamId === t.id && task.status === filterTaskStatus)) return false;
     return true;
   });
 
@@ -41,8 +47,8 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <Filter className="w-4 h-4 text-muted-light" />
+          <div className="flex flex-wrap items-center gap-3">
+            <Filter className="w-4 h-4 text-muted-light shrink-0" />
             <select
               value={filterArea}
               onChange={(e) => setFilterArea(e.target.value)}
@@ -61,6 +67,35 @@ export default function AdminDashboard() {
               <option value="pronta_inovamf">Pronta para InovAMF</option>
               <option value="encaminhada">Encaminhada</option>
               <option value="inativa">Inativa</option>
+            </select>
+            <select
+              value={filterCourse}
+              onChange={(e) => setFilterCourse(e.target.value)}
+              className="px-3 py-1.5 border border-input-border rounded-lg text-sm bg-input-bg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Todos os cursos</option>
+              {COURSES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select
+              value={filterMentor}
+              onChange={(e) => setFilterMentor(e.target.value)}
+              className="px-3 py-1.5 border border-input-border rounded-lg text-sm bg-input-bg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Todos os mentores</option>
+              {mentors.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <select
+              value={filterTaskStatus}
+              onChange={(e) => setFilterTaskStatus(e.target.value as TaskStatus | "")}
+              className="px-3 py-1.5 border border-input-border rounded-lg text-sm bg-input-bg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="">Qualquer status de tarefa</option>
+              <option value="pendente">Pendente</option>
+              <option value="em_andamento">Em andamento</option>
+              <option value="entregue">Entregue</option>
+              <option value="atrasada">Atrasada</option>
+              <option value="aprovada">Aprovada</option>
+              <option value="reprovada">Ajustar</option>
             </select>
           </div>
           <div className="flex bg-hover-bg rounded-lg p-0.5">

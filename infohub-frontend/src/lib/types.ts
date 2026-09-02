@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "aluno" | "mentor";
+export type UserRole = "admin" | "aluno" | "mentor" | "integrante";
 
 export type JourneyStage = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -57,6 +57,11 @@ export interface TeamMember {
   course: string;
 }
 
+export interface StageHistoryEntry {
+  stage: JourneyStage;
+  completedAt: string;
+}
+
 export interface Team {
   id: string;
   ideaName: string;
@@ -69,10 +74,14 @@ export interface Team {
     id: string;
     name: string;
     email: string;
+    phone: string;
     course: string;
+    semester: string;
   };
   members: TeamMember[];
   createdAt: string;
+  howDidYouHear?: string;
+  stageHistory: StageHistoryEntry[];
 }
 
 export interface Task {
@@ -86,6 +95,15 @@ export interface Task {
   files: FileUpload[];
   adminComment?: string;
   createdAt: string;
+  templateId?: string;
+}
+
+export interface TaskTemplate {
+  id: string;
+  title: string;
+  description: string;
+  stage: JourneyStage;
+  mandatory: boolean;
 }
 
 export interface FileUpload {
@@ -111,3 +129,25 @@ export interface User {
   role: UserRole;
   teamId?: string;
 }
+
+export const SEMESTERS = [
+  "1º semestre",
+  "2º semestre",
+  "3º semestre",
+  "4º semestre",
+  "5º semestre",
+  "6º semestre",
+  "7º semestre",
+  "8º semestre",
+  "9º semestre",
+  "10º semestre",
+];
+
+export const HOW_DID_YOU_HEAR_OPTIONS = [
+  "Professor(a) ou coordenação",
+  "Colega de curso",
+  "Redes sociais",
+  "Evento da faculdade",
+  "Site da AMF",
+  "Outro",
+];

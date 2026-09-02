@@ -1,4 +1,4 @@
-import { Team, Task, MentorNote, User, JourneyStage } from "./types";
+import { Team, Task, MentorNote, User, JourneyStage, TaskTemplate } from "./types";
 
 export const AREAS = [
   "Educação",
@@ -8,6 +8,29 @@ export const AREAS = [
   "Agronegócio",
   "Finanças",
   "Social",
+];
+
+export const COURSES = [
+  "Administração",
+  "Ciências Contábeis",
+  "Direito",
+  "Gastronomia",
+  "Hotelaria",
+  "Ontopsicologia",
+  "Pedagogia",
+  "Sistemas de Informação",
+];
+
+export const mockTaskTemplates: TaskTemplate[] = [
+  { id: "tpl-1", title: "Cadastro da ideia", description: "Preencher o formulário inicial com os dados da ideia e da equipe.", stage: 1, mandatory: true },
+  { id: "tpl-2", title: "Confirmar agendamento do 1º encontro", description: "Confirmar data e horário do primeiro encontro com o mentor.", stage: 2, mandatory: true },
+  { id: "tpl-3", title: "Definir problema, público-alvo e solução", description: "Documentar o problema identificado, o público-alvo e a proposta de solução inicial.", stage: 3, mandatory: true },
+  { id: "tpl-4", title: "Enviar Value Proposition Design", description: "Construir e enviar o Value Proposition Design da ideia.", stage: 4, mandatory: true },
+  { id: "tpl-5", title: "Enviar Business Model Canvas", description: "Construir e enviar o Business Model Canvas da ideia.", stage: 5, mandatory: true },
+  { id: "tpl-6", title: "Gravar Pitch Vídeo", description: "Gravar vídeo de pitch de até 3 minutos apresentando o projeto.", stage: 6, mandatory: true },
+  { id: "tpl-7", title: "Entregar Canvas final", description: "Versão final do Business Model Canvas após revisões da mentoria.", stage: 6, mandatory: true },
+  { id: "tpl-8", title: "Entregar VPD final", description: "Versão final do Value Proposition Design após revisões da mentoria.", stage: 6, mandatory: true },
+  { id: "tpl-9", title: "Confirmar dados dos integrantes", description: "Preencher formulário com dados completos de todos os integrantes para submissão ao InovAMF.", stage: 6, mandatory: true },
 ];
 
 export const mockUsers: User[] = [
@@ -32,13 +55,22 @@ export const mockTeams: Team[] = [
       id: "aluno-1",
       name: "Lucas Oliveira",
       email: "lucas@aluno.amf.edu.br",
+      phone: "(54) 99101-2233",
       course: "Sistemas de Informação",
+      semester: "6º semestre",
     },
     members: [
-      { id: "m1", name: "Fernanda Lima", email: "fernanda@aluno.amf.edu.br", course: "Design" },
+      { id: "m1", name: "Fernanda Lima", email: "fernanda@aluno.amf.edu.br", course: "Administração" },
       { id: "m2", name: "João Pedro Martins", email: "joao@aluno.amf.edu.br", course: "Administração" },
     ],
     createdAt: "2026-03-15",
+    howDidYouHear: "Professor(a) ou coordenação",
+    stageHistory: [
+      { stage: 1, completedAt: "2026-03-18" },
+      { stage: 2, completedAt: "2026-04-02" },
+      { stage: 3, completedAt: "2026-05-10" },
+      { stage: 4, completedAt: "2026-06-20" },
+    ],
   },
   {
     id: "team-2",
@@ -52,12 +84,19 @@ export const mockTeams: Team[] = [
       id: "aluno-2",
       name: "Mariana Santos",
       email: "mariana@aluno.amf.edu.br",
+      phone: "(54) 99202-3344",
       course: "Administração",
+      semester: "4º semestre",
     },
     members: [
       { id: "m3", name: "Carlos Eduardo Pinto", email: "carloseduardo@aluno.amf.edu.br", course: "Sistemas de Informação" },
     ],
     createdAt: "2026-04-02",
+    howDidYouHear: "Colega de curso",
+    stageHistory: [
+      { stage: 1, completedAt: "2026-04-05" },
+      { stage: 2, completedAt: "2026-04-20" },
+    ],
   },
   {
     id: "team-3",
@@ -71,14 +110,24 @@ export const mockTeams: Team[] = [
       id: "aluno-3",
       name: "Pedro Henrique Costa",
       email: "pedro@aluno.amf.edu.br",
-      course: "Engenharia de Software",
+      phone: "(54) 99303-4455",
+      course: "Sistemas de Informação",
+      semester: "8º semestre",
     },
     members: [
-      { id: "m4", name: "Ana Clara Souza", email: "anaclara@aluno.amf.edu.br", course: "Agronomia" },
-      { id: "m5", name: "Rafael Torres", email: "rafael@aluno.amf.edu.br", course: "Engenharia Elétrica" },
-      { id: "m6", name: "Isabela Rocha", email: "isabela@aluno.amf.edu.br", course: "Design" },
+      { id: "m4", name: "Ana Clara Souza", email: "anaclara@aluno.amf.edu.br", course: "Ontopsicologia" },
+      { id: "m5", name: "Rafael Torres", email: "rafael@aluno.amf.edu.br", course: "Sistemas de Informação" },
+      { id: "m6", name: "Isabela Rocha", email: "isabela@aluno.amf.edu.br", course: "Pedagogia" },
     ],
     createdAt: "2026-02-20",
+    howDidYouHear: "Evento da faculdade",
+    stageHistory: [
+      { stage: 1, completedAt: "2026-02-23" },
+      { stage: 2, completedAt: "2026-03-10" },
+      { stage: 3, completedAt: "2026-04-15" },
+      { stage: 4, completedAt: "2026-05-25" },
+      { stage: 5, completedAt: "2026-07-05" },
+    ],
   },
   {
     id: "team-4",
@@ -92,10 +141,14 @@ export const mockTeams: Team[] = [
       id: "aluno-4",
       name: "Gabriela Mendes",
       email: "gabriela@aluno.amf.edu.br",
+      phone: "(54) 99404-5566",
       course: "Ciências Contábeis",
+      semester: "2º semestre",
     },
     members: [],
     createdAt: "2026-08-10",
+    howDidYouHear: "Redes sociais",
+    stageHistory: [],
   },
   {
     id: "team-5",
@@ -109,12 +162,20 @@ export const mockTeams: Team[] = [
       id: "aluno-5",
       name: "Thiago Nascimento",
       email: "thiago@aluno.amf.edu.br",
+      phone: "(54) 99505-6677",
       course: "Sistemas de Informação",
+      semester: "5º semestre",
     },
     members: [
       { id: "m7", name: "Camila Andrade", email: "camila@aluno.amf.edu.br", course: "Pedagogia" },
     ],
     createdAt: "2026-05-18",
+    howDidYouHear: "Professor(a) ou coordenação",
+    stageHistory: [
+      { stage: 1, completedAt: "2026-05-21" },
+      { stage: 2, completedAt: "2026-06-05" },
+      { stage: 3, completedAt: "2026-07-12" },
+    ],
   },
   {
     id: "team-6",
@@ -128,12 +189,18 @@ export const mockTeams: Team[] = [
       id: "aluno-6",
       name: "Juliana Ferreira",
       email: "juliana@aluno.amf.edu.br",
+      phone: "(54) 99606-7788",
       course: "Administração",
+      semester: "3º semestre",
     },
     members: [
-      { id: "m8", name: "Bruno Almeida", email: "bruno@aluno.amf.edu.br", course: "Logística" },
+      { id: "m8", name: "Bruno Almeida", email: "bruno@aluno.amf.edu.br", course: "Hotelaria" },
     ],
     createdAt: "2026-07-05",
+    howDidYouHear: "Site da AMF",
+    stageHistory: [
+      { stage: 1, completedAt: "2026-07-08" },
+    ],
   },
   {
     id: "team-7",
@@ -147,13 +214,24 @@ export const mockTeams: Team[] = [
       id: "aluno-7",
       name: "Amanda Ribeiro",
       email: "amanda@aluno.amf.edu.br",
-      course: "Psicologia",
+      phone: "(54) 99707-8899",
+      course: "Ontopsicologia",
+      semester: "7º semestre",
     },
     members: [
       { id: "m9", name: "Diego Monteiro", email: "diego@aluno.amf.edu.br", course: "Sistemas de Informação" },
-      { id: "m10", name: "Letícia Barbosa", email: "leticia@aluno.amf.edu.br", course: "Psicologia" },
+      { id: "m10", name: "Letícia Barbosa", email: "leticia@aluno.amf.edu.br", course: "Ontopsicologia" },
     ],
     createdAt: "2026-01-10",
+    howDidYouHear: "Colega de curso",
+    stageHistory: [
+      { stage: 1, completedAt: "2026-01-13" },
+      { stage: 2, completedAt: "2026-01-28" },
+      { stage: 3, completedAt: "2026-03-02" },
+      { stage: 4, completedAt: "2026-04-10" },
+      { stage: 5, completedAt: "2026-05-20" },
+      { stage: 6, completedAt: "2026-08-12" },
+    ],
   },
   {
     id: "team-8",
@@ -167,10 +245,14 @@ export const mockTeams: Team[] = [
       id: "aluno-8",
       name: "Felipe Cardoso",
       email: "felipe@aluno.amf.edu.br",
-      course: "Engenharia de Software",
+      phone: "(54) 99808-9900",
+      course: "Sistemas de Informação",
+      semester: "1º semestre",
     },
     members: [],
     createdAt: "2026-08-18",
+    howDidYouHear: "Outro",
+    stageHistory: [],
   },
 ];
 
@@ -195,7 +277,8 @@ export const mockTasks: Task[] = [
     dueDate: "2026-08-15",
     status: "aprovada",
     files: [
-      { id: "f1", name: "VPD_EcoTrack_v2.pdf", size: "2.4 MB", uploadedAt: "2026-08-14", version: 2 },
+      { id: "f1", name: "VPD_EcoTrack_v1.pdf", size: "2.1 MB", uploadedAt: "2026-08-08", version: 1 },
+      { id: "f1b", name: "VPD_EcoTrack_v2.pdf", size: "2.4 MB", uploadedAt: "2026-08-14", version: 2 },
     ],
     createdAt: "2026-07-28",
   },
@@ -343,6 +426,19 @@ export function getNotesByTeam(teamId: string): MentorNote[] {
 
 export function getMentors(): User[] {
   return mockUsers.filter((u) => u.role === "mentor");
+}
+
+export function getMentorIdForTeam(teamId: string): string | undefined {
+  return Object.entries(mockMentorTeams).find(([, teamIds]) => teamIds.includes(teamId))?.[0];
+}
+
+export function getMentorNameForTeam(teamId: string): string {
+  const mentorId = getMentorIdForTeam(teamId);
+  return mockUsers.find((u) => u.id === mentorId)?.name ?? "—";
+}
+
+export function getTaskTemplatesByStage(stage: JourneyStage): TaskTemplate[] {
+  return mockTaskTemplates.filter((t) => t.stage === stage);
 }
 
 export function getOverdueTasks(): Task[] {

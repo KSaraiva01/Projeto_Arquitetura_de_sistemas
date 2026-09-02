@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Plus, Trash2, ArrowLeft, CheckCircle } from "lucide-react";
 import InfoHubLogo from "@/components/InfoHubLogo";
 import ThemeToggle from "@/components/ThemeToggle";
-import { AREAS } from "@/lib/mock-data";
+import { AREAS, COURSES } from "@/lib/mock-data";
+import { SEMESTERS, HOW_DID_YOU_HEAR_OPTIONS } from "@/lib/types";
 
 interface TeamMemberInput {
   name: string;
@@ -19,15 +20,19 @@ export default function CadastroPage() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    phone: "",
     course: "",
+    semester: "",
     ideaName: "",
     description: "",
     area: "",
     ideaStage: "",
+    howDidYouHear: "",
     password: "",
     confirmPassword: "",
   });
 
+  const [lgpdConsent, setLgpdConsent] = useState(false);
   const [members, setMembers] = useState<TeamMemberInput[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -59,7 +64,9 @@ export default function CadastroPage() {
     const required: [string, string][] = [
       ["name", "Nome completo"],
       ["email", "E-mail"],
+      ["phone", "Telefone/WhatsApp"],
       ["course", "Curso"],
+      ["semester", "Semestre/período"],
       ["ideaName", "Nome da ideia"],
       ["description", "Descrição da ideia"],
       ["area", "Área da ideia"],
@@ -76,6 +83,10 @@ export default function CadastroPage() {
 
     if (formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "As senhas não coincidem";
+    }
+
+    if (!lgpdConsent) {
+      newErrors.lgpdConsent = "É necessário concordar com o tratamento dos dados para continuar";
     }
 
     setErrors(newErrors);
@@ -157,9 +168,31 @@ export default function CadastroPage() {
                 {errors.email && <p className="text-xs text-danger mt-1">{errors.email}</p>}
               </div>
               <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Telefone/WhatsApp *</label>
+                <input
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => updateField("phone", e.target.value)}
+                  placeholder="(00) 00000-0000"
+                  className={inputClass("phone")}
+                />
+                {errors.phone && <p className="text-xs text-danger mt-1">{errors.phone}</p>}
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Curso *</label>
-                <input type="text" value={formData.course} onChange={(e) => updateField("course", e.target.value)} className={inputClass("course")} />
+                <select value={formData.course} onChange={(e) => updateField("course", e.target.value)} className={inputClass("course")}>
+                  <option value="">Selecione...</option>
+                  {COURSES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
                 {errors.course && <p className="text-xs text-danger mt-1">{errors.course}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Semestre/período *</label>
+                <select value={formData.semester} onChange={(e) => updateField("semester", e.target.value)} className={inputClass("semester")}>
+                  <option value="">Selecione...</option>
+                  {SEMESTERS.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {errors.semester && <p className="text-xs text-danger mt-1">{errors.semester}</p>}
               </div>
             </div>
           </section>
@@ -188,7 +221,10 @@ export default function CadastroPage() {
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <input type="text" value={member.name} onChange={(e) => updateMember(idx, "name", e.target.value)} placeholder="Nome" className={inputClass("")} />
                   <input type="email" value={member.email} onChange={(e) => updateMember(idx, "email", e.target.value)} placeholder="E-mail" className={inputClass("")} />
-                  <input type="text" value={member.course} onChange={(e) => updateMember(idx, "course", e.target.value)} placeholder="Curso" className={inputClass("")} />
+                  <select value={member.course} onChange={(e) => updateMember(idx, "course", e.target.value)} className={inputClass("")}>
+                    <option value="">Curso...</option>
+                    {COURSES.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
                 <button type="button" onClick={() => removeMember(idx)} className="p-2 text-muted-light hover:text-danger mt-0.5">
                   <Trash2 className="w-4 h-4" />
@@ -237,6 +273,17 @@ export default function CadastroPage() {
                   {errors.ideaStage && <p className="text-xs text-danger mt-1">{errors.ideaStage}</p>}
                 </div>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Como conheceu o InfoHub? (opcional)</label>
+                <select
+                  value={formData.howDidYouHear}
+                  onChange={(e) => updateField("howDidYouHear", e.target.value)}
+                  className={inputClass("howDidYouHear")}
+                >
+                  <option value="">Selecione...</option>
+                  {HOW_DID_YOU_HEAR_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
             </div>
           </section>
 
@@ -254,6 +301,29 @@ export default function CadastroPage() {
                 {errors.confirmPassword && <p className="text-xs text-danger mt-1">{errors.confirmPassword}</p>}
               </div>
             </div>
+          </section>
+
+          <section className="bg-card rounded-xl border border-card-border p-6">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={lgpdConsent}
+                onChange={(e) => {
+                  setLgpdConsent(e.target.checked);
+                  if (errors.lgpdConsent) {
+                    const newErrors = { ...errors };
+                    delete newErrors.lgpdConsent;
+                    setErrors(newErrors);
+                  }
+                }}
+                className="mt-0.5 rounded border-input-border"
+              />
+              <span className="text-sm text-muted">
+                Li e concordo com o tratamento dos meus dados pessoais e dos dados dos integrantes da equipe pelo InfoHub,
+                conforme a Lei Geral de Proteção de Dados (LGPD), para fins de acompanhamento da jornada no programa. *
+              </span>
+            </label>
+            {errors.lgpdConsent && <p className="text-xs text-danger mt-2">{errors.lgpdConsent}</p>}
           </section>
 
           <div className="flex items-center gap-4">
