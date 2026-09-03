@@ -29,19 +29,19 @@ const StudentJourney: React.FC = () => {
       </Card>
 
       <Card>
-        <h3 className="mb-1 font-display text-base font-semibold text-ink-900">Linha do tempo detalhada</h3>
-        <p className="mb-5 text-xs text-ink-700/50">Todas as 7 etapas da jornada, da ideia até o InovAMF</p>
+        <h3 className="mb-1 font-display text-base font-semibold text-ink-900 dark:text-white">Linha do tempo detalhada</h3>
+        <p className="mb-5 text-xs text-ink-700/50 dark:text-white/40">Todas as 7 etapas da jornada, da ideia até o InovAMF</p>
         <JourneyTrail currentStageId={team.stageId} orientation="vertical" />
       </Card>
 
       <Card className="mt-5">
-        <h3 className="mb-5 font-display text-base font-semibold text-ink-900">Histórico de movimentações</h3>
-        <ul className="space-y-4 border-l-2 border-slate-100 pl-5">
+        <h3 className="mb-5 font-display text-base font-semibold text-ink-900 dark:text-white">Histórico de movimentações</h3>
+        <ul className="space-y-4 border-l-2 border-slate-100 dark:border-white/10 pl-5">
           {[...team.history].reverse().map((h) => (
             <li key={h.id} className="relative">
               <span className="absolute -left-[25px] top-1 h-2.5 w-2.5 rounded-full bg-brand-500 ring-4 ring-white" />
-              <p className="text-sm text-ink-800">{h.description}</p>
-              <p className="mt-0.5 text-xs text-ink-700/40">
+              <p className="text-sm text-ink-800 dark:text-white/90">{h.description}</p>
+              <p className="mt-0.5 text-xs text-ink-700/40 dark:text-white/35">
                 {new Date(h.date + 'T00:00:00').toLocaleDateString('pt-BR')} · {h.author}
               </p>
             </li>

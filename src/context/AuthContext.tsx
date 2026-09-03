@@ -4,8 +4,8 @@ import { USERS } from '../data/users'
 
 interface AuthContextValue {
   user: User | null
-  login: (email: string, password: string) => { ok: boolean; message?: string }
-  loginAs: (role: 'admin' | 'aluno') => void
+  login: (email: string, password: string) => { ok: boolean; message?: string; user?: User }
+  loginAs: (role: 'admin' | 'mentor' | 'aluno') => void
   logout: () => void
 }
 
@@ -28,11 +28,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(found)
     sessionStorage.setItem(STORAGE_KEY, found.id)
-    return { ok: true }
+    return { ok: true, user: found }
   }, [])
 
-  const loginAs = useCallback((role: 'admin' | 'aluno') => {
-    const found = role === 'admin' ? USERS.find((u) => u.role === 'admin') : USERS.find((u) => u.id === 'u1')
+  const loginAs = useCallback((role: 'admin' | 'mentor' | 'aluno') => {
+    const found =
+      role === 'admin'
+        ? USERS.find((u) => u.role === 'admin')
+        : role === 'mentor'
+        ? USERS.find((u) => u.id === 'u-mentor1')
+        : USERS.find((u) => u.id === 'u1')
     if (found) {
       setUser(found)
       sessionStorage.setItem(STORAGE_KEY, found.id)

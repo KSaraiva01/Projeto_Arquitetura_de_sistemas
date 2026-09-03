@@ -42,7 +42,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileSelected }) => {
         }}
         onClick={() => inputRef.current?.click()}
         className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center transition ${
-          dragOver ? 'border-brand-400 bg-brand-50' : 'border-slate-200 bg-slate-50 hover:border-brand-300 hover:bg-brand-50/50'
+          dragOver ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/15' : 'border-slate-200 dark:border-white/15 bg-slate-50 dark:bg-ink-950 hover:border-brand-300 dark:hover:border-brand-500/40 hover:bg-brand-50 dark:hover:bg-brand-500/15'
         }`}
       >
         <input
@@ -54,21 +54,21 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onFileSelected }) => {
         {uploading ? (
           <>
             <Loader2 size={28} className="animate-spin text-brand-500" />
-            <p className="mt-3 text-sm font-medium text-ink-800">Enviando arquivo (simulado)...</p>
+            <p className="mt-3 text-sm font-medium text-ink-800 dark:text-white/90">Enviando arquivo (simulado)...</p>
           </>
         ) : selected ? (
           <>
             <CheckCircle2 size={28} className="text-trail-done" />
-            <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-ink-900">
+            <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-ink-900 dark:text-white">
               <FileText size={15} /> {selected.name}
             </p>
-            <p className="mt-0.5 text-xs text-ink-700/50">{selected.sizeKb} KB — clique para trocar o arquivo</p>
+            <p className="mt-0.5 text-xs text-ink-700/50 dark:text-white/40">{selected.sizeKb} KB — clique para trocar o arquivo</p>
           </>
         ) : (
           <>
-            <UploadCloud size={28} className="text-ink-700/40" />
-            <p className="mt-3 text-sm font-medium text-ink-800">Arraste um arquivo ou clique para selecionar</p>
-            <p className="mt-0.5 text-xs text-ink-700/40">PDF, DOCX, PPTX, PNG ou JPG — envio simulado, nada é enviado a um servidor</p>
+            <UploadCloud size={28} className="text-ink-700/40 dark:text-white/35" />
+            <p className="mt-3 text-sm font-medium text-ink-800 dark:text-white/90">Arraste um arquivo ou clique para selecionar</p>
+            <p className="mt-0.5 text-xs text-ink-700/40 dark:text-white/35">PDF, DOCX, PPTX, PNG ou JPG — envio simulado, nada é enviado a um servidor</p>
           </>
         )}
       </div>

@@ -20,7 +20,7 @@ const AdminDeliveries: React.FC = () => {
   return (
     <Layout title="Entregas">
       <div className="mb-5 flex items-center justify-between">
-        <p className="text-sm text-ink-700/60">Todos os arquivos enviados pelas equipes, com status e comentários de revisão.</p>
+        <p className="text-sm text-ink-700/60 dark:text-white/50">Todos os arquivos enviados pelas equipes, com status e comentários de revisão.</p>
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as DeliveryStatus | 'todas')} className="w-48">
           <option value="todas">Todos os status</option>
           <option value="entregue">Aguardando revisão</option>
@@ -30,31 +30,31 @@ const AdminDeliveries: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {filtered.length === 0 && <Card className="md:col-span-2 xl:col-span-3 text-center text-sm text-ink-700/50">Nenhuma entrega encontrada para este filtro.</Card>}
+        {filtered.length === 0 && <Card className="md:col-span-2 xl:col-span-3 text-center text-sm text-ink-700/50 dark:text-white/40">Nenhuma entrega encontrada para este filtro.</Card>}
         {filtered.map((d) => {
           const team = teams.find((t) => t.id === d.teamId)
           const task = tasks.find((t) => t.id === d.taskId)
           return (
             <Card key={d.id}>
               <div className="flex items-start justify-between gap-2">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-600 dark:text-brand-400">
                   <FileText size={18} />
                 </span>
                 <StatusBadge status={d.status === 'entregue' ? 'entregue' : d.status === 'aprovada' ? 'aprovada' : 'ajuste'} />
               </div>
-              <p className="mt-3 truncate font-semibold text-ink-900" title={d.fileName}>{d.fileName}</p>
-              <p className="mt-0.5 text-xs text-ink-700/50">{team?.ideaName} · v{d.version} · {d.sizeKb} KB</p>
-              <p className="mt-1 text-xs text-ink-700/50">Tarefa: {task?.title}</p>
-              <p className="mt-1 text-xs text-ink-700/40">Enviado em {new Date(d.uploadedAt + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+              <p className="mt-3 truncate font-semibold text-ink-900 dark:text-white" title={d.fileName}>{d.fileName}</p>
+              <p className="mt-0.5 text-xs text-ink-700/50 dark:text-white/40">{team?.ideaName} · v{d.version} · {d.sizeKb} KB</p>
+              <p className="mt-1 text-xs text-ink-700/50 dark:text-white/40">Tarefa: {task?.title}</p>
+              <p className="mt-1 text-xs text-ink-700/40 dark:text-white/35">Enviado em {new Date(d.uploadedAt + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
 
               {d.comment && (
-                <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-ink-700/70">
+                <p className="mt-3 rounded-lg bg-slate-50 dark:bg-ink-950 px-3 py-2 text-xs text-ink-700/70 dark:text-white/60">
                   <strong>Comentário:</strong> {d.comment}
                 </p>
               )}
 
               <div className="mt-4 flex gap-2">
-                <button className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-2 text-xs font-semibold text-ink-700 hover:bg-slate-50">
+                <button className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-white/15 py-2 text-xs font-semibold text-ink-700 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/5">
                   <Download size={13} /> Ver arquivo
                 </button>
                 {d.status === 'entregue' && (

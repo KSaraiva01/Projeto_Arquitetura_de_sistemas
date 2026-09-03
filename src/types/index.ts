@@ -1,4 +1,4 @@
-export type Role = 'admin' | 'aluno'
+export type Role = 'admin' | 'mentor' | 'aluno'
 
 export type StageId =
   | 'ideia'
@@ -48,9 +48,18 @@ export interface Team {
   ideaName: string
   description: string
   course: string
+  /** E-mail de contato oficial da equipe, informado no cadastro */
+  email: string
   area: string
-  leaderId: string
+  /** Referência a um usuário mockado existente (equipes de exemplo) */
+  leaderId?: string
+  /** Nome do líder — usado quando não há um usuário vinculado (equipes cadastradas via formulário) */
+  leaderName: string
+  /** E-mail do líder — usado quando não há um usuário vinculado */
+  leaderEmail?: string
   memberIds: string[]
+  /** Um ou mais mentores responsáveis pela equipe */
+  mentorIds: string[]
   stageId: StageId
   progress: number
   createdAt: string

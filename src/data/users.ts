@@ -10,6 +10,35 @@ export const USERS: User[] = [
     avatarColor: '#4640DE',
   },
 
+  // Mentores — podem existir vários
+  {
+    id: 'u-mentor1',
+    name: 'Prof. Ricardo Nunes',
+    email: 'ricardo.mentor@infohub.com',
+    password: 'mentor123',
+    role: 'mentor',
+    course: 'Mentoria de Inovação',
+    avatarColor: '#14B88A',
+  },
+  {
+    id: 'u-mentor2',
+    name: 'Profa. Juliana Prado',
+    email: 'juliana.mentor@infohub.com',
+    password: 'mentor123',
+    role: 'mentor',
+    course: 'Mentoria de Negócios',
+    avatarColor: '#F5A524',
+  },
+  {
+    id: 'u-mentor3',
+    name: 'Prof. Eduardo Katsu',
+    email: 'eduardo.mentor@infohub.com',
+    password: 'mentor123',
+    role: 'mentor',
+    course: 'Mentoria de Produto',
+    avatarColor: '#5B5FEF',
+  },
+
   // Equipe 1 — NutriRota
   { id: 'u1', name: 'João Pedro Silva', email: 'joao@aluno.com', password: '123456', role: 'aluno', teamId: 't1', course: 'Engenharia de Software', avatarColor: '#F5A524' },
   { id: 'u2', name: 'Ana Beatriz Lima', email: 'ana@aluno.com', password: '123456', role: 'aluno', teamId: 't1', course: 'Nutrição', avatarColor: '#14B88A' },
@@ -49,3 +78,5 @@ export const USERS: User[] = [
 
 export const userById = (id: string) => USERS.find((u) => u.id === id)
 export const usersByTeam = (teamId: string) => USERS.filter((u) => u.teamId === teamId)
+export const mentors = () => USERS.filter((u) => u.role === 'mentor')
+export const mentorsByIds = (ids: string[]) => USERS.filter((u) => ids.includes(u.id))

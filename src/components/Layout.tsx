@@ -6,7 +6,7 @@ export const Layout: React.FC<{ title: string; children: React.ReactNode }> = ({
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
+    <div className="flex min-h-screen bg-slate-50 dark:bg-ink-950">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Navbar onMenuClick={() => setSidebarOpen(true)} title={title} />

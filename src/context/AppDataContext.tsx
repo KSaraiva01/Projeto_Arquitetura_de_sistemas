@@ -15,7 +15,9 @@ interface AppDataContextValue {
   deliveryForTask: (taskId: string) => Delivery | undefined
   moveTeamToStage: (teamId: string, stageId: StageId, author?: string) => void
   updateTaskStatus: (taskId: string, status: TaskStatus, author?: string) => void
+  updateTaskDueDate: (taskId: string, dueDate: string, author?: string) => void
   addTask: (task: Omit<TaskItem, 'id'>) => void
+  addTeam: (team: Omit<Team, 'id' | 'stageId' | 'progress' | 'createdAt' | 'history'>) => Team
   submitDelivery: (params: { teamId: string; taskId: string; fileName: string; sizeKb: number }) => void
   reviewDelivery: (deliveryId: string, decision: 'aprovada' | 'ajuste', comment: string) => void
   addHistoryEntry: (teamId: string, description: string, author: string) => void
@@ -71,11 +73,46 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [tasks, addHistoryEntry],
   )
 
+  const updateTaskDueDate = useCallback(
+    (taskId: string, dueDate: string, author = 'Mentoria') => {
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, dueDate } : t)))
+      const task = tasks.find((t) => t.id === taskId)
+      if (task) {
+        const formatted = new Date(dueDate + 'T00:00:00').toLocaleDateString('pt-BR')
+        addHistoryEntry(task.teamId, `Prazo da tarefa "${task.title}" alterado para ${formatted}.`, author)
+      }
+    },
+    [tasks, addHistoryEntry],
+  )
+
   const addTask = useCallback((task: Omit<TaskItem, 'id'>) => {
     const newTask: TaskItem = { ...task, id: nextId('tk') }
     setTasks((prev) => [...prev, newTask])
     addHistoryEntry(task.teamId, `Nova tarefa criada: "${task.title}".`, 'Administração')
   }, [addHistoryEntry])
+
+  const addTeam = useCallback(
+    (team: Omit<Team, 'id' | 'stageId' | 'progress' | 'createdAt' | 'history'>) => {
+      const newTeam: Team = {
+        ...team,
+        id: nextId('t'),
+        stageId: 'ideia',
+        progress: 0,
+        createdAt: new Date().toISOString().slice(0, 10),
+        history: [
+          {
+            id: nextId('h'),
+            date: new Date().toISOString().slice(0, 10),
+            description: 'Equipe cadastrada no InfoHub.',
+            author: team.leaderName,
+          },
+        ],
+      }
+      setTeams((prev) => [...prev, newTeam])
+      return newTeam
+    },
+    [],
+  )
 
   const submitDelivery = useCallback(
     ({ teamId, taskId, fileName, sizeKb }: { teamId: string; taskId: string; fileName: string; sizeKb: number }) => {
@@ -143,12 +180,14 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       deliveryForTask,
       moveTeamToStage,
       updateTaskStatus,
+      updateTaskDueDate,
       addTask,
+      addTeam,
       submitDelivery,
       reviewDelivery,
       addHistoryEntry,
     }),
-    [teams, tasks, deliveries, getTeam, tasksByTeamFn, deliveriesByTeamFn, deliveryForTask, moveTeamToStage, updateTaskStatus, addTask, submitDelivery, reviewDelivery, addHistoryEntry],
+    [teams, tasks, deliveries, getTeam, tasksByTeamFn, deliveriesByTeamFn, deliveryForTask, moveTeamToStage, updateTaskStatus, updateTaskDueDate, addTask, addTeam, submitDelivery, reviewDelivery, addHistoryEntry],
   )
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>

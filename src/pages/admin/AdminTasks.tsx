@@ -4,7 +4,9 @@ import { Layout } from '../../components/Layout'
 import { Table, Column } from '../../components/Table'
 import { StatusBadge } from '../../components/StatusBadge'
 import { Select, Input } from '../../components/FormControls'
+import { TaskDueDate } from '../../components/TaskDueDate'
 import { useAppData } from '../../context/AppDataContext'
+import { useBasePath } from '../../utils/basePath'
 import { stageById } from '../../data/stages'
 import { TaskItem, TaskStatus } from '../../types'
 import { Search } from 'lucide-react'
@@ -22,6 +24,7 @@ const STATUS_OPTIONS: { value: TaskStatus | 'todas'; label: string }[] = [
 const AdminTasks: React.FC = () => {
   const { tasks, teams, updateTaskStatus } = useAppData()
   const navigate = useNavigate()
+  const basePath = useBasePath()
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'todas'>('todas')
   const [search, setSearch] = useState('')
 
@@ -41,8 +44,8 @@ const AdminTasks: React.FC = () => {
       header: 'Tarefa',
       render: (t) => (
         <div className="max-w-xs">
-          <p className="font-semibold text-ink-900">{t.title}</p>
-          <p className="truncate text-xs text-ink-700/50">{t.description}</p>
+          <p className="font-semibold text-ink-900 dark:text-white">{t.title}</p>
+          <p className="truncate text-xs text-ink-700/50 dark:text-white/40">{t.description}</p>
         </div>
       ),
     },
@@ -52,7 +55,7 @@ const AdminTasks: React.FC = () => {
       render: (t) => {
         const team = teams.find((tm) => tm.id === t.teamId)
         return (
-          <button onClick={(e) => { e.stopPropagation(); navigate(`/admin/equipes/${t.teamId}`) }} className="font-medium text-brand-600 hover:underline">
+          <button onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/equipes/${t.teamId}`) }} className="font-medium text-brand-600 dark:text-brand-400 hover:underline">
             {team?.ideaName}
           </button>
         )
@@ -61,12 +64,12 @@ const AdminTasks: React.FC = () => {
     {
       key: 'stage',
       header: 'Etapa',
-      render: (t) => <span className="text-xs text-ink-700/70">{stageById(t.stageId)?.shortTitle}</span>,
+      render: (t) => <span className="text-xs text-ink-700/70 dark:text-white/60">{stageById(t.stageId)?.shortTitle}</span>,
     },
     {
       key: 'due',
       header: 'Prazo',
-      render: (t) => <span className="text-ink-700/70">{new Date(t.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')}</span>,
+      render: (t) => <div onClick={(e) => e.stopPropagation()}><TaskDueDate taskId={t.id} dueDate={t.dueDate} /></div>,
     },
     {
       key: 'status',
@@ -92,7 +95,7 @@ const AdminTasks: React.FC = () => {
     <Layout title="Tarefas">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-700/30" />
+          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-700/30 dark:text-white/25" />
           <Input placeholder="Buscar tarefa ou equipe..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as TaskStatus | 'todas')} className="sm:w-56">
@@ -102,9 +105,9 @@ const AdminTasks: React.FC = () => {
         </Select>
       </div>
 
-      <p className="mb-3 text-xs text-ink-700/50">{filtered.length} tarefa(s) encontrada(s) de {tasks.length} no total</p>
+      <p className="mb-3 text-xs text-ink-700/50 dark:text-white/40">{filtered.length} tarefa(s) encontrada(s) de {tasks.length} no total</p>
 
-      <Table columns={columns} data={filtered} rowKey={(t) => t.id} onRowClick={(t) => navigate(`/admin/equipes/${t.teamId}`)} />
+      <Table columns={columns} data={filtered} rowKey={(t) => t.id} onRowClick={(t) => navigate(`${basePath}/equipes/${t.teamId}`)} />
     </Layout>
   )
 }

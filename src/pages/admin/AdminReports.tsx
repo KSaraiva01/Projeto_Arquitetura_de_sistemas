@@ -53,28 +53,28 @@ const AdminReports: React.FC = () => {
     <Layout title="Relatórios">
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-700/50">Progresso médio das equipes</p>
-          <p className="mt-2 font-display text-4xl font-bold text-ink-900">{avgProgress}%</p>
-          <p className="mt-1 text-xs text-ink-700/50">Média da barra de progresso de todas as {teams.length} equipes</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-700/50 dark:text-white/40">Progresso médio das equipes</p>
+          <p className="mt-2 font-display text-4xl font-bold text-ink-900 dark:text-white">{avgProgress}%</p>
+          <p className="mt-1 text-xs text-ink-700/50 dark:text-white/40">Média da barra de progresso de todas as {teams.length} equipes</p>
         </Card>
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-700/50">Taxa de aprovação de entregas</p>
-          <p className="mt-2 font-display text-4xl font-bold text-emerald-600">{approvalRate}%</p>
-          <p className="mt-1 text-xs text-ink-700/50">{approvedDeliveries} aprovadas · {adjustDeliveries} com pedido de ajuste</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-700/50 dark:text-white/40">Taxa de aprovação de entregas</p>
+          <p className="mt-2 font-display text-4xl font-bold text-emerald-600 dark:text-emerald-400">{approvalRate}%</p>
+          <p className="mt-1 text-xs text-ink-700/50 dark:text-white/40">{approvedDeliveries} aprovadas · {adjustDeliveries} com pedido de ajuste</p>
         </Card>
         <Card>
-          <p className="text-xs font-semibold uppercase tracking-wide text-ink-700/50">Equipes prontas para o InovAMF</p>
-          <p className="mt-2 font-display text-4xl font-bold text-brand-600">{teams.filter((t) => t.stageId === 'pronto').length} / {teams.length}</p>
-          <p className="mt-1 text-xs text-ink-700/50">Concluíram todas as 6 etapas da trilha</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink-700/50 dark:text-white/40">Equipes prontas para o InovAMF</p>
+          <p className="mt-2 font-display text-4xl font-bold text-brand-600 dark:text-brand-400">{teams.filter((t) => t.stageId === 'pronto').length} / {teams.length}</p>
+          <p className="mt-1 text-xs text-ink-700/50 dark:text-white/40">Concluíram todas as 6 etapas da trilha</p>
         </Card>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-1">
-          <h3 className="mb-5 font-display text-base font-semibold text-ink-900">Tarefas por status</h3>
+          <h3 className="mb-5 font-display text-base font-semibold text-ink-900 dark:text-white">Tarefas por status</h3>
           <div className="flex flex-col items-center">
             <svg viewBox="0 0 160 160" className="h-40 w-40 -rotate-90">
-              <circle cx="80" cy="80" r={radius} fill="none" stroke="#F1F5F9" strokeWidth="20" />
+              <circle cx="80" cy="80" r={radius} fill="none" stroke="currentColor" strokeWidth="20" className="text-slate-100 dark:text-white/10" />
               {statusBreakdown.map(({ status, count }) => {
                 if (count === 0) return null
                 const fraction = count / totalTasks
@@ -97,32 +97,32 @@ const AdminReports: React.FC = () => {
                 return el
               })}
             </svg>
-            <p className="-mt-24 font-display text-2xl font-bold text-ink-900 pointer-events-none">{totalTasks}</p>
-            <p className="-mt-1 text-[10px] uppercase tracking-wide text-ink-700/40 pointer-events-none">tarefas</p>
+            <p className="-mt-24 font-display text-2xl font-bold text-ink-900 dark:text-white pointer-events-none">{totalTasks}</p>
+            <p className="-mt-1 text-[10px] uppercase tracking-wide text-ink-700/40 dark:text-white/35 pointer-events-none">tarefas</p>
           </div>
           <ul className="mt-6 space-y-2">
             {statusBreakdown.map(({ status, count }) => (
               <li key={status} className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-ink-700/70">
+                <span className="flex items-center gap-2 text-ink-700/70 dark:text-white/60">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STATUS_COLORS[status] }} />
                   {STATUS_LABELS[status]}
                 </span>
-                <span className="font-mono font-semibold text-ink-900">{count}</span>
+                <span className="font-mono font-semibold text-ink-900 dark:text-white">{count}</span>
               </li>
             ))}
           </ul>
         </Card>
 
         <Card className="lg:col-span-2">
-          <h3 className="mb-5 font-display text-base font-semibold text-ink-900">Funil da jornada — equipes por etapa</h3>
+          <h3 className="mb-5 font-display text-base font-semibold text-ink-900 dark:text-white">Funil da jornada — equipes por etapa</h3>
           <div className="space-y-4">
             {STAGES.map((stage) => {
               const count = teams.filter((t) => t.stageId === stage.id).length
               const widthPct = Math.max((count / teams.length) * 100, count > 0 ? 6 : 0)
               return (
                 <div key={stage.id} className="flex items-center gap-3">
-                  <span className="w-40 shrink-0 text-xs font-medium text-ink-700/70">{stage.title}</span>
-                  <div className="h-7 flex-1 overflow-hidden rounded-lg bg-slate-50">
+                  <span className="w-40 shrink-0 text-xs font-medium text-ink-700/70 dark:text-white/60">{stage.title}</span>
+                  <div className="h-7 flex-1 overflow-hidden rounded-lg bg-slate-50 dark:bg-ink-950">
                     <div
                       className={`flex h-7 items-center justify-end rounded-lg px-2 text-[11px] font-bold text-white transition-all duration-500 ${
                         stage.id === 'pronto' ? 'bg-trail-done' : 'bg-brand-500'
@@ -137,12 +137,12 @@ const AdminReports: React.FC = () => {
             })}
           </div>
 
-          <div className="mt-6 border-t border-slate-100 pt-5">
-            <h4 className="mb-3 text-sm font-semibold text-ink-900">Equipes por área de atuação</h4>
+          <div className="mt-6 border-t border-slate-100 dark:border-white/10 pt-5">
+            <h4 className="mb-3 text-sm font-semibold text-ink-900 dark:text-white">Equipes por área de atuação</h4>
             <div className="flex flex-wrap gap-2">
               {teamsByArea.map(([area, count]) => (
-                <span key={area} className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-ink-700">
-                  {area} <span className="ml-1 font-bold text-ink-900">{count}</span>
+                <span key={area} className="rounded-full bg-slate-100 dark:bg-white/10 px-3 py-1.5 text-xs font-medium text-ink-700 dark:text-white/70">
+                  {area} <span className="ml-1 font-bold text-ink-900 dark:text-white">{count}</span>
                 </span>
               ))}
             </div>

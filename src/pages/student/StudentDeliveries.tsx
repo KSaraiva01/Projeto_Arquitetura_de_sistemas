@@ -43,8 +43,8 @@ const StudentDeliveries: React.FC = () => {
   return (
     <Layout title="Envio de entregas">
       <Card className="mb-6">
-        <h3 className="mb-1 font-display text-base font-semibold text-ink-900">Enviar novo arquivo</h3>
-        <p className="mb-4 text-xs text-ink-700/50">Selecione a tarefa relacionada e envie o arquivo (simulado — nada é enviado a um servidor real).</p>
+        <h3 className="mb-1 font-display text-base font-semibold text-ink-900 dark:text-white">Enviar novo arquivo</h3>
+        <p className="mb-4 text-xs text-ink-700/50 dark:text-white/40">Selecione a tarefa relacionada e envie o arquivo (simulado — nada é enviado a um servidor real).</p>
 
         <div className="space-y-4">
           <Field label="Tarefa relacionada" required>
@@ -59,7 +59,7 @@ const StudentDeliveries: React.FC = () => {
           <FileUpload onFileSelected={setPendingFile} />
 
           {confirmed ? (
-            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 size={17} /> Entrega enviada com sucesso! A equipe de mentoria irá revisar em breve.
             </div>
           ) : (
@@ -70,24 +70,24 @@ const StudentDeliveries: React.FC = () => {
         </div>
       </Card>
 
-      <h3 className="mb-3 font-display text-base font-semibold text-ink-900">Entregas enviadas</h3>
+      <h3 className="mb-3 font-display text-base font-semibold text-ink-900 dark:text-white">Entregas enviadas</h3>
       <div className="space-y-3">
-        {deliveries.length === 0 && <Card className="text-center text-sm text-ink-700/50">Nenhum arquivo enviado ainda.</Card>}
+        {deliveries.length === 0 && <Card className="text-center text-sm text-ink-700/50 dark:text-white/40">Nenhum arquivo enviado ainda.</Card>}
         {[...deliveries].reverse().map((d) => {
           const task = tasks.find((t) => t.id === d.taskId)
           return (
             <Card key={d.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 dark:bg-brand-500/15 text-brand-600 dark:text-brand-400">
                     <FileText size={18} />
                   </span>
                   <div>
-                    <p className="font-semibold text-ink-900">{d.fileName}</p>
-                    <p className="text-xs text-ink-700/50">Tarefa: {task?.title} · versão {d.version} · {d.sizeKb} KB</p>
-                    <p className="mt-0.5 text-xs text-ink-700/50">Enviado em {new Date(d.uploadedAt + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
+                    <p className="font-semibold text-ink-900 dark:text-white">{d.fileName}</p>
+                    <p className="text-xs text-ink-700/50 dark:text-white/40">Tarefa: {task?.title} · versão {d.version} · {d.sizeKb} KB</p>
+                    <p className="mt-0.5 text-xs text-ink-700/50 dark:text-white/40">Enviado em {new Date(d.uploadedAt + 'T00:00:00').toLocaleDateString('pt-BR')}</p>
                     {d.comment && (
-                      <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-ink-700/70">
+                      <p className="mt-2 rounded-lg bg-slate-50 dark:bg-ink-950 px-3 py-2 text-xs text-ink-700/70 dark:text-white/60">
                         <strong>Comentário do administrador:</strong> {d.comment}
                       </p>
                     )}

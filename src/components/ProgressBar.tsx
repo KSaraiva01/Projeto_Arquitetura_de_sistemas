@@ -22,11 +22,11 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     <div className="w-full">
       {(label || showValue) && (
         <div className="mb-1.5 flex items-center justify-between text-xs">
-          {label && <span className="font-medium text-ink-700">{label}</span>}
-          {showValue && <span className="font-mono font-semibold text-ink-900">{clamped}%</span>}
+          {label && <span className="font-medium text-ink-700 dark:text-white/70">{label}</span>}
+          {showValue && <span className="font-mono font-semibold text-ink-900 dark:text-white">{clamped}%</span>}
         </div>
       )}
-      <div className={`w-full overflow-hidden rounded-full bg-slate-100 ${height}`}>
+      <div className={`w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10 ${height}`}>
         <div
           className={`${height} rounded-full ${colorClass} transition-all duration-500 ease-out`}
           style={{ width: `${clamped}%` }}

@@ -18,7 +18,7 @@ export const JourneyTrail: React.FC<JourneyTrailProps> = ({
 
   if (orientation === 'vertical') {
     return (
-      <ol className="relative ml-3 space-y-6 border-l-2 border-slate-200 pl-6">
+      <ol className="relative ml-3 space-y-6 border-l-2 border-slate-200 dark:border-white/15 pl-6">
         {STAGES.map((stage) => {
           const state = stage.order < currentOrder ? 'done' : stage.order === currentOrder ? 'current' : 'pending'
           return (
@@ -29,13 +29,13 @@ export const JourneyTrail: React.FC<JourneyTrailProps> = ({
                     ? 'bg-trail-done text-white'
                     : state === 'current'
                     ? 'bg-trail-current text-white'
-                    : 'bg-slate-200 text-slate-500'
+                    : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/40'
                 }`}
               >
                 {state === 'done' ? <Check size={14} strokeWidth={3} /> : <span className="text-[10px] font-bold">{stage.order}</span>}
               </span>
-              <p className={`text-sm font-semibold ${state === 'pending' ? 'text-ink-700/50' : 'text-ink-900'}`}>{stage.title}</p>
-              <p className="mt-0.5 text-xs text-ink-700/50">{stage.description}</p>
+              <p className={`text-sm font-semibold ${state === 'pending' ? 'text-ink-700/50 dark:text-white/40' : 'text-ink-900 dark:text-white'}`}>{stage.title}</p>
+              <p className="mt-0.5 text-xs text-ink-700/50 dark:text-white/40">{stage.description}</p>
             </li>
           )
         })}
@@ -58,7 +58,7 @@ export const JourneyTrail: React.FC<JourneyTrailProps> = ({
                       ? 'bg-trail-done text-white'
                       : state === 'current'
                       ? 'bg-trail-current text-white shadow-[0_0_0_4px_rgba(245,165,36,0.18)]'
-                      : 'bg-slate-200 text-slate-500'
+                      : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-white/40'
                   }`}
                   title={stage.title}
                 >
@@ -66,14 +66,14 @@ export const JourneyTrail: React.FC<JourneyTrailProps> = ({
                 </span>
                 <span
                   className={`mt-2 text-center text-[11px] font-medium leading-tight ${
-                    state === 'pending' ? 'text-ink-700/40' : 'text-ink-800'
+                    state === 'pending' ? 'text-ink-700/40 dark:text-white/35' : 'text-ink-800 dark:text-white/90'
                   }`}
                 >
                   {stage.shortTitle}
                 </span>
               </div>
               {!isLast && (
-                <div className={`h-0.5 flex-1 ${compact ? 'w-6' : 'w-10'} ${stage.order < currentOrder ? 'bg-trail-done' : 'bg-slate-200'}`} />
+                <div className={`h-0.5 flex-1 ${compact ? 'w-6' : 'w-10'} ${stage.order < currentOrder ? 'bg-trail-done' : 'bg-slate-200 dark:bg-white/10'}`} />
               )}
             </div>
           )

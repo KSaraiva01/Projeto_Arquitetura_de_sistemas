@@ -19,6 +19,8 @@ import StudentJourney from './pages/student/StudentJourney'
 import StudentTasks from './pages/student/StudentTasks'
 import StudentDeliveries from './pages/student/StudentDeliveries'
 
+const homeFor = (role: string) => (role === 'admin' ? '/admin' : role === 'mentor' ? '/mentor' : '/aluno')
+
 const App: React.FC = () => {
   const { user } = useAuth()
 
@@ -26,10 +28,11 @@ const App: React.FC = () => {
     <Routes>
       <Route
         path="/login"
-        element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/aluno'} replace /> : <Login />}
+        element={user ? <Navigate to={homeFor(user.role)} replace /> : <Login />}
       />
 
-      {/* Administrador */}
+      {/* Administrador e Mentor compartilham as mesmas telas de gestão,
+          cada um sob seu próprio prefixo de rota (/admin ou /mentor) */}
       <Route path="/admin" element={<ProtectedRoute allow="admin"><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/equipes" element={<ProtectedRoute allow="admin"><AdminTeams /></ProtectedRoute>} />
       <Route path="/admin/equipes/:teamId" element={<ProtectedRoute allow="admin"><TeamDetails /></ProtectedRoute>} />
@@ -38,6 +41,14 @@ const App: React.FC = () => {
       <Route path="/admin/entregas" element={<ProtectedRoute allow="admin"><AdminDeliveries /></ProtectedRoute>} />
       <Route path="/admin/relatorios" element={<ProtectedRoute allow="admin"><AdminReports /></ProtectedRoute>} />
 
+      <Route path="/mentor" element={<ProtectedRoute allow="mentor"><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/mentor/equipes" element={<ProtectedRoute allow="mentor"><AdminTeams /></ProtectedRoute>} />
+      <Route path="/mentor/equipes/:teamId" element={<ProtectedRoute allow="mentor"><TeamDetails /></ProtectedRoute>} />
+      <Route path="/mentor/kanban" element={<ProtectedRoute allow="mentor"><AdminKanban /></ProtectedRoute>} />
+      <Route path="/mentor/tarefas" element={<ProtectedRoute allow="mentor"><AdminTasks /></ProtectedRoute>} />
+      <Route path="/mentor/entregas" element={<ProtectedRoute allow="mentor"><AdminDeliveries /></ProtectedRoute>} />
+      <Route path="/mentor/relatorios" element={<ProtectedRoute allow="mentor"><AdminReports /></ProtectedRoute>} />
+
       {/* Aluno */}
       <Route path="/aluno" element={<ProtectedRoute allow="aluno"><StudentDashboard /></ProtectedRoute>} />
       <Route path="/aluno/equipe" element={<ProtectedRoute allow="aluno"><StudentTeam /></ProtectedRoute>} />
@@ -45,7 +56,7 @@ const App: React.FC = () => {
       <Route path="/aluno/tarefas" element={<ProtectedRoute allow="aluno"><StudentTasks /></ProtectedRoute>} />
       <Route path="/aluno/entregas" element={<ProtectedRoute allow="aluno"><StudentDeliveries /></ProtectedRoute>} />
 
-      <Route path="/" element={<Navigate to={user ? (user.role === 'admin' ? '/admin' : '/aluno') : '/login'} replace />} />
+      <Route path="/" element={<Navigate to={user ? homeFor(user.role) : '/login'} replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
