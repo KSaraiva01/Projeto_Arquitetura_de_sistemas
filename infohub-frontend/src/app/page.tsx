@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Rocket, Users, ClipboardCheck, BarChart3, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, Rocket, Users, ClipboardCheck, BarChart3, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import InfoHubLogo from "@/components/InfoHubLogo";
 import ThemeToggle from "@/components/ThemeToggle";
+import { api, ApiError } from "@/lib/api";
+import { homePathFor } from "@/lib/api-types";
+import { useSession } from "@/lib/session";
 
 const FEATURES = [
   {
@@ -38,22 +41,65 @@ const STEPS = [
 
 export default function LoginPage() {
   const router = useRouter();
+  const { user, refresh } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState<"admin" | "aluno" | "mentor" | "integrante">("aluno");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
+  // Quem já tem sessão ativa vai direto para o painel do seu perfil.
+  useEffect(() => {
+    if (user) router.replace(homePathFor(user));
+  }, [user, router]);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (!email || !password) {
-      setError("Preencha todos os campos.");
+      setError("Preencha e-mail e senha.");
       return;
     }
 
-    router.push(`/${role}`);
+    setSubmitting(true);
+    try {
+      // O destino vem da role devolvida pela API, não de um seletor na tela:
+      // quem decide o que a pessoa é são os dados, não o formulário.
+      const session = await api.login(email, password);
+      await refresh();
+      router.replace(homePathFor(session.user));
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível conectar à API. Verifique se o backend está rodando.",
+      );
+      setSubmitting(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    setError("");
+    setNotice("");
+
+    if (!email) {
+      setError("Informe seu e-mail para receber o link de redefinição.");
+      return;
+    }
+
+    try {
+      const result = await api.forgotPassword(email);
+      setNotice(result.message);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível solicitar a redefinição.",
+      );
+    }
   }
 
   return (
@@ -156,33 +202,10 @@ export default function LoginPage() {
         <div className="max-w-md mx-auto">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-bold text-foreground mb-2">Acesse sua conta</h2>
-            <p className="text-sm text-muted">Selecione seu perfil e entre na plataforma</p>
+            <p className="text-sm text-muted">Entre com o e-mail e a senha da sua conta</p>
           </div>
 
           <div className="bg-card rounded-2xl border border-card-border p-8 shadow-sm">
-            <div className="grid grid-cols-2 gap-1 bg-hover-bg rounded-lg p-1 mb-6">
-              {(["aluno", "integrante", "mentor", "admin"] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setRole(r)}
-                  className={`py-2 text-xs sm:text-sm font-medium rounded-md transition-all ${
-                    role === r
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted"
-                  }`}
-                >
-                  {r === "aluno"
-                    ? "Aluno (líder)"
-                    : r === "integrante"
-                    ? "Integrante"
-                    : r === "mentor"
-                    ? "Mentor"
-                    : "Administrador"}
-                </button>
-              ))}
-            </div>
-
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">E-mail</label>
@@ -214,23 +237,38 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {error && <p className="text-sm text-danger">{error}</p>}
+              {error && (
+                <p role="alert" className="text-sm text-danger">
+                  {error}
+                </p>
+              )}
+              {notice && (
+                <p role="status" className="text-sm text-success">
+                  {notice}
+                </p>
+              )}
 
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 text-sm text-muted">
                   <input type="checkbox" className="rounded border-input-border" />
                   Lembrar-me
                 </label>
-                <button type="button" className="text-sm text-primary hover:text-primary-dark">
+                <button
+                  type="button"
+                  onClick={() => void handleForgotPassword()}
+                  className="text-sm text-primary hover:text-primary-dark"
+                >
                   Esqueceu a senha?
                 </button>
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm"
+                disabled={submitting}
+                className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                Entrar
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {submitting ? "Entrando..." : "Entrar"}
               </button>
             </form>
 

@@ -26,14 +26,23 @@ Ao concluir a Etapa 6 com todos os entregáveis aprovados, a equipe é marcada c
 
 ## Stack
 
+**Frontend** (`infohub-frontend/`)
 - [Next.js 16](https://nextjs.org) (App Router, Turbopack)
 - React 19 + TypeScript
 - Tailwind CSS 4
-- [lucide-react](https://lucide.dev) para ícones
+- [lucide-react](https://lucide.dev) para ícones, date-fns para datas
+
+**Backend** (`infohub-backend/`)
+- Node.js 20+ com TypeScript e Express 5
+- PostgreSQL acessado com `pg` — SQL puro, sem ORM
+- Zod para validação, JWT + refresh token para autenticação
+
+Detalhes da API, do schema e dos endpoints: [`infohub-backend/README.md`](infohub-backend/README.md).
 
 ## Estrutura
 
 ```
+infohub-backend/                 # API REST (ver README próprio)
 infohub-frontend/
 ├── src/
 │   ├── app/
@@ -43,13 +52,31 @@ infohub-frontend/
 │   │   ├── mentor/             # Painel do mentor (dashboard, equipes, tarefas)
 │   │   ├── aluno/               # Área do aluno líder (jornada, tarefas)
 │   │   └── integrante/         # Área do integrante de equipe (jornada, tarefas)
-│   ├── components/             # Sidebar, Header, TeamDetail, StagePipeline, StatusBadge, etc.
+│   ├── components/             # Sidebar, Header, KanbanBoard, CalendarView, etc.
 │   └── lib/
-│       ├── types.ts             # Tipos do domínio (Team, Task, TaskTemplate, etc.)
-│       └── mock-data.ts         # Dados mock (equipes, tarefas, cursos, modelos de tarefa)
+│       ├── api.ts               # Cliente HTTP da API, com refresh de sessão
+│       ├── api-types.ts         # Tipos das respostas da API
+│       ├── session.tsx          # Contexto de sessão e guarda de rota
+│       ├── types.ts             # Tipos do protótipo (telas ainda em mock)
+│       └── mock-data.ts         # Dados mock das telas não migradas
 ```
 
 ## Como rodar localmente
+
+São dois processos. Comece pelo backend, porque o frontend já consulta a API.
+
+**1. Backend** (precisa de um PostgreSQL rodando):
+
+```bash
+cd infohub-backend
+npm install
+cp .env.example .env    # preencha a senha do seu PostgreSQL
+npm run db:setup        # cria o banco, aplica as migrations e popula
+npm run db:seed:demo    # opcional: 6 equipes de exemplo, com tarefas e prazos
+npm run dev
+```
+
+**2. Frontend**, em outro terminal:
 
 ```bash
 cd infohub-frontend
@@ -57,18 +84,41 @@ npm install
 npm run dev
 ```
 
-Acesse [http://localhost:3000](http://localhost:3000).
+Acesse [http://localhost:3000](http://localhost:3000) e entre com
+`admin@amf.edu.br` / `InfoHub@2026`.
+
+Com o seed de demonstração aplicado, também funcionam
+`ana.ramos@amf.edu.br` e `ricardo.ferreira@amf.edu.br` (mentores, cada um com
+suas equipes) e `lucas.oliveira@aluno.amf.edu.br` (aluno líder) — todos com a
+mesma senha.
 
 ## Status atual
 
-Este repositório contém o **frontend** do InfoHub, funcionando como protótipo navegável sobre dados mock (`src/lib/mock-data.ts`). As interações (criar tarefa, aprovar entrega, avançar etapa, etc.) atualizam apenas o estado local da página — não há persistência entre recarregamentos.
+O projeto está em migração do protótipo para o sistema de verdade. Hoje
+convivem duas metades:
 
-**Ainda não implementado** (fora do escopo deste repositório até o momento):
-- Backend/API e banco de dados conectado (existe um schema PostgreSQL desenhado no repositório principal do projeto)
-- Autenticação real (login, recuperação de senha, hash de senha)
-- Envio de e-mails transacionais (lembretes e notificações automáticas)
-- Upload e armazenamento real de arquivos
-- Exportação de relatórios (CSV/Excel)
+**Ligado à API e persistindo no PostgreSQL:**
+- Login, sessão e recuperação de senha (RF-01). O perfil vem da API — não há
+  mais seletor de perfil na tela de login.
+- Gestão de contas de administrador e mentor (RF-03).
+- Kanban do funil com **arrastar e soltar** para administrador e mentor
+  (RF-06, RF-09), respeitando a RN-01: avançar com tarefa obrigatória
+  pendente pede confirmação e registra o motivo.
+- **Calendário** de prazos e lembretes, com escopo por perfil.
+- Escopo de acesso (RNF-03): mentor vê apenas as equipes que acompanha.
+
+**Ainda sobre `src/lib/mock-data.ts`:**
+- Páginas de Equipes, Tarefas e Relatórios do administrador
+- Área do aluno e do integrante (Minha Jornada, Minhas Tarefas)
+- Formulário de cadastro da ideia
+
+**Ainda não implementado:**
+- Cadastro da ideia criando equipe e conta de verdade (RF-02, RF-04, RF-05)
+- Criar tarefa e avaliar entrega (RF-11, RF-12, RF-15)
+- Upload e armazenamento de arquivos (RF-14, RF-16, RNF-04)
+- Disparo automático dos e-mails (RF-18 a RF-20) — a fila e os lembretes já
+  existem no banco, falta a rotina agendada
+- Exportação de relatórios em CSV/Excel (RF-23)
 
 ## Scripts
 
