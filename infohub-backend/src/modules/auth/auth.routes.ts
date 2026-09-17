@@ -8,6 +8,7 @@ import { validateBody } from "../../shared/middlewares/validate.js";
 import * as controller from "./auth.controller.js";
 import {
   changePasswordSchema,
+  deleteAccountSchema,
   forgotPasswordSchema,
   loginSchema,
   refreshSchema,
@@ -56,4 +57,11 @@ authRouter.post(
   authenticate,
   validateBody(changePasswordSchema),
   controller.changePassword,
+);
+
+authRouter.delete(
+  "/me",
+  authenticate,
+  validateBody(deleteAccountSchema),
+  controller.deleteAccount,
 );

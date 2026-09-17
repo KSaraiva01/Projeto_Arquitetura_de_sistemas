@@ -9,16 +9,12 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json && node scripts/copy-sql.mjs",
+    "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "db:create": "tsx src/database/create.ts",
-    "db:migrate": "tsx src/database/migrate.ts up",
-    "db:status": "tsx src/database/migrate.ts status",
-    "db:seed": "tsx src/database/seed.ts",
-    "db:reset": "tsx src/database/reset.ts",
-    "db:setup": "npm run db:create && npm run db:migrate && npm run db:seed",
-    "db:seed:demo": "tsx src/database/seed-demo.ts"
+    "db:setup": "node scripts/db.mjs setup",
+    "db:seed:demo": "node scripts/db.mjs seed-demo",
+    "db:reset": "node scripts/db.mjs reset"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

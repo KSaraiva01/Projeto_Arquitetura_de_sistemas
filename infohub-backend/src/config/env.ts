@@ -33,6 +33,9 @@ const envSchema = z.object({
     .int()
     .positive()
     .default(60),
+  // RF-02: o link de primeiro acesso (aluno recém-cadastrado) dura mais que o
+  // de recuperação, porque o aluno pode demorar dias para abrir o e-mail.
+  FIRST_ACCESS_EXPIRES_IN_HOURS: z.coerce.number().int().positive().default(72),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(8).max(15).default(10),
 
   // E-mail (RNF-06)
@@ -41,10 +44,12 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
 
-  // Seed
-  SEED_ADMIN_NAME: z.string().default("Administrador InfoHub"),
-  SEED_ADMIN_EMAIL: z.string().email().default("admin@amf.edu.br"),
-  SEED_ADMIN_PASSWORD: z.string().min(8).default("InfoHub@2026"),
+  // Rotina agendada (RN-04 + lembretes RF-17 + avisos de atraso RF-20)
+  JOBS_ENABLED: z.enum(["true", "false"]).default("true"),
+  JOBS_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+
+  // O administrador inicial não vem daqui: é criado por database/schema.sql,
+  // junto com as áreas da ideia e os modelos de tarefa.
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -69,6 +74,7 @@ export const env = {
   isDevelopment: raw.NODE_ENV === "development",
   isTest: raw.NODE_ENV === "test",
   databaseSsl: raw.DATABASE_SSL === "true",
+  jobsEnabled: raw.JOBS_ENABLED === "true",
   corsOrigins: raw.CORS_ORIGINS.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),

@@ -44,3 +44,9 @@ usersRouter.patch(
   validateBody(updateUserStatusSchema),
   controller.updateStatus,
 );
+
+usersRouter.delete(
+  "/:id",
+  validateParams(userIdParamSchema),
+  controller.remove,
+);

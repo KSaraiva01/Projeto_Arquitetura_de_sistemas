@@ -6,10 +6,10 @@ import { verifyAccessToken } from "../utils/jwt.js";
 
 interface CurrentUserRow {
   id: string;
-  name: string;
+  nome: string;
   email: string;
-  role: UserRole;
-  is_active: boolean;
+  perfil: UserRole;
+  ativo: boolean;
 }
 
 /**
@@ -33,7 +33,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
     const payload = verifyAccessToken(header.slice("Bearer ".length).trim());
 
     const user = await queryOne<CurrentUserRow>(
-      `SELECT id, name, email, role, is_active FROM app_user WHERE id = $1`,
+      `SELECT id, nome, email, perfil, ativo FROM usuario WHERE id = $1`,
       [payload.sub],
     );
 
@@ -41,7 +41,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
       throw new UnauthorizedError("Usuário não encontrado.", "USER_NOT_FOUND");
     }
 
-    if (!user.is_active) {
+    if (!user.ativo) {
       throw new ForbiddenError(
         "Esta conta está desativada. Procure a coordenação do InfoHub.",
         "ACCOUNT_DISABLED",
@@ -50,9 +50,9 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
 
     req.user = {
       id: user.id,
-      name: user.name,
+      name: user.nome,
       email: user.email,
-      role: user.role,
+      role: user.perfil,
     };
 
     next();

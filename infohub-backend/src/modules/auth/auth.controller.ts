@@ -2,8 +2,10 @@ import type { Request, RequestHandler, Response } from "express";
 import { env } from "../../config/env.js";
 import { UnauthorizedError } from "../../shared/errors/AppError.js";
 import { getBody } from "../../shared/middlewares/validate.js";
+import { anonymizeUser } from "../users/users.service.js";
 import type {
   ChangePasswordInput,
+  DeleteAccountInput,
   ForgotPasswordInput,
   LoginInput,
   RefreshInput,
@@ -112,5 +114,23 @@ export const changePassword: RequestHandler = async (req, res) => {
   res.status(200).json({
     message:
       "Senha alterada com sucesso. Por segurança, entre novamente com a nova senha.",
+  });
+};
+
+/** RNF-02 (LGPD) — o próprio usuário exclui a conta. */
+export const deleteAccount: RequestHandler = async (req, res) => {
+  const input = getBody<DeleteAccountInput>(req);
+  await service.assertOwnPassword(req.user!.id, input.password);
+
+  const result = await anonymizeUser(req.user!.id, {
+    id: req.user!.id,
+    ipAddress: req.ip ?? null,
+  });
+
+  clearRefreshCookie(res);
+  res.status(200).json({
+    ...result,
+    message:
+      "Sua conta foi excluída. Seus dados pessoais foram apagados do InfoHub.",
   });
 };

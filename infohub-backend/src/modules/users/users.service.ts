@@ -8,13 +8,8 @@ import {
 } from "../../shared/errors/AppError.js";
 import { sendMail } from "../../shared/mail/mailer.js";
 import { accountCreatedTemplate } from "../../shared/mail/templates.js";
-import {
-  generateOpaqueToken,
-  generateTemporaryPassword,
-  hashPassword,
-  hashToken,
-} from "../../shared/utils/crypto.js";
 import * as authRepository from "../auth/auth.repository.js";
+import { issuePasswordToken } from "../auth/auth.service.js";
 import * as repository from "./users.repository.js";
 import type { UserSummaryRow } from "./users.repository.js";
 import type {
@@ -30,26 +25,33 @@ export interface PublicUserSummary {
   phone: string | null;
   course: string | null;
   semester: string | null;
-  role: UserSummaryRow["role"];
+  role: UserSummaryRow["perfil"];
   isActive: boolean;
+  hasPassword: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
   mentoredTeams: number;
 }
 
+interface Actor {
+  id: string;
+  ipAddress?: string | null;
+}
+
 function toPublic(row: UserSummaryRow): PublicUserSummary {
   return {
     id: row.id,
-    name: row.name,
+    name: row.nome,
     email: row.email,
-    phone: row.phone,
-    course: row.course,
-    semester: row.semester,
-    role: row.role,
-    isActive: row.is_active,
-    lastLoginAt: row.last_login_at,
-    createdAt: row.created_at,
-    mentoredTeams: row.mentored_teams,
+    phone: row.telefone,
+    course: row.curso,
+    semester: row.semestre,
+    role: row.perfil,
+    isActive: row.ativo,
+    hasPassword: row.senha_definida,
+    lastLoginAt: row.ultimo_login_em,
+    createdAt: row.criado_em,
+    mentoredTeams: row.equipes_mentoradas,
   };
 }
 
@@ -70,7 +72,7 @@ export async function listUsers(filters: ListUsersQuery) {
 export async function getUser(id: string): Promise<PublicUserSummary> {
   const user = await repository.findById(id);
 
-  if (!user) {
+  if (!user || user.anonimizado_em) {
     throw new NotFoundError("Usuário não encontrado.", "USER_NOT_FOUND");
   }
 
@@ -80,13 +82,13 @@ export async function getUser(id: string): Promise<PublicUserSummary> {
 /**
  * RF-03 — cria uma conta de administrador ou mentor.
  *
- * Ninguém escolhe a senha por outra pessoa: gravamos uma senha aleatória que
- * jamais é exibida e mandamos um link de definição de senha por e-mail,
- * reaproveitando o mesmo fluxo (e a mesma expiração) da recuperação.
+ * Ninguém escolhe a senha por outra pessoa: a conta nasce com senha_hash
+ * NULL e o usuário recebe por e-mail um link de primeiro acesso, o mesmo
+ * mecanismo do cadastro do aluno (RF-02).
  */
 export async function createUser(
   input: CreateUserInput,
-  actor: { id: string; ipAddress?: string | null },
+  actor: Actor,
 ): Promise<PublicUserSummary> {
   const existing = await repository.findByEmail(input.email);
 
@@ -97,33 +99,21 @@ export async function createUser(
     );
   }
 
-  const temporaryPasswordHash = await hashPassword(generateTemporaryPassword());
-  const resetToken = generateOpaqueToken();
-  const expiresAt = new Date(
-    Date.now() + env.PASSWORD_RESET_EXPIRES_IN_MINUTES * 60 * 1000,
-  );
-
-  const userId = await withTransaction(async (client) => {
+  const { userId, token } = await withTransaction(async (client) => {
     const id = await repository.insert(client, {
       name: input.name,
       email: input.email,
-      passwordHash: temporaryPasswordHash,
       role: input.role,
       phone: input.phone ?? null,
     });
 
-    await authRepository.createPasswordResetToken({
-      userId: id,
-      tokenHash: hashToken(resetToken),
-      expiresAt,
-      client,
-    });
+    const issued = await issuePasswordToken(client, id, "FIRST_ACCESS");
 
     await recordAudit(
       {
         userId: actor.id,
         action: "USER_CREATED",
-        entityType: "app_user",
+        entityType: "usuario",
         entityId: id,
         details: { email: input.email, role: input.role },
         ipAddress: actor.ipAddress ?? null,
@@ -131,14 +121,14 @@ export async function createUser(
       client,
     );
 
-    return id;
+    return { userId: id, token: issued.token };
   });
 
   const template = accountCreatedTemplate(
     input.name,
     input.role,
-    resetToken,
-    env.PASSWORD_RESET_EXPIRES_IN_MINUTES,
+    token,
+    env.FIRST_ACCESS_EXPIRES_IN_HOURS * 60,
   );
 
   await sendMail({
@@ -154,15 +144,15 @@ export async function createUser(
 export async function updateUser(
   id: string,
   input: UpdateUserInput,
-  actor: { id: string; ipAddress?: string | null },
+  actor: Actor,
 ): Promise<PublicUserSummary> {
   const current = await repository.findById(id);
 
-  if (!current) {
+  if (!current || current.anonimizado_em) {
     throw new NotFoundError("Usuário não encontrado.", "USER_NOT_FOUND");
   }
 
-  if (input.role && current.role === "STUDENT") {
+  if (input.role && current.perfil === "STUDENT") {
     throw new BadRequestError(
       "Não é possível transformar uma conta de aluno em administrador ou mentor por aqui.",
       "CANNOT_PROMOTE_STUDENT",
@@ -171,7 +161,7 @@ export async function updateUser(
 
   // Rebaixar o último administrador ativo deixaria o sistema sem ninguém
   // capaz de gerenciar contas.
-  if (input.role && input.role !== "ADMIN" && current.role === "ADMIN") {
+  if (input.role && input.role !== "ADMIN" && current.perfil === "ADMIN") {
     const remaining = await repository.countActiveAdmins(id);
     if (remaining === 0) {
       throw new ConflictError(
@@ -192,12 +182,12 @@ export async function updateUser(
   }
 
   const updated = await repository.update(id, {
-    name: input.name,
+    nome: input.name,
     email: input.email,
-    role: input.role,
-    phone: input.phone,
-    course: input.course,
-    semester: input.semester,
+    perfil: input.role,
+    telefone: input.phone,
+    curso: input.course,
+    semestre: input.semester,
   });
 
   if (!updated) {
@@ -207,7 +197,7 @@ export async function updateUser(
   await recordAudit({
     userId: actor.id,
     action: "USER_UPDATED",
-    entityType: "app_user",
+    entityType: "usuario",
     entityId: id,
     details: { changes: input },
     ipAddress: actor.ipAddress ?? null,
@@ -225,11 +215,11 @@ export async function updateUser(
 export async function setUserStatus(
   id: string,
   isActive: boolean,
-  actor: { id: string; ipAddress?: string | null },
+  actor: Actor,
 ): Promise<PublicUserSummary> {
   const current = await repository.findById(id);
 
-  if (!current) {
+  if (!current || current.anonimizado_em) {
     throw new NotFoundError("Usuário não encontrado.", "USER_NOT_FOUND");
   }
 
@@ -240,7 +230,7 @@ export async function setUserStatus(
     );
   }
 
-  if (!isActive && current.role === "ADMIN") {
+  if (!isActive && current.perfil === "ADMIN") {
     const remaining = await repository.countActiveAdmins(id);
     if (remaining === 0) {
       throw new ConflictError(
@@ -250,7 +240,7 @@ export async function setUserStatus(
     }
   }
 
-  if (current.is_active === isActive) {
+  if (current.ativo === isActive) {
     return toPublic(current);
   }
 
@@ -263,10 +253,104 @@ export async function setUserStatus(
   await recordAudit({
     userId: actor.id,
     action: isActive ? "USER_ACTIVATED" : "USER_DEACTIVATED",
-    entityType: "app_user",
+    entityType: "usuario",
     entityId: id,
     ipAddress: actor.ipAddress ?? null,
   });
 
   return getUser(id);
+}
+
+export interface AnonymizeResult {
+  promotedLeaders: Array<{ teamId: string; teamName: string; newLeaderName: string }>;
+  deletedTeams: Array<{ teamId: string; teamName: string }>;
+}
+
+/**
+ * RNF-02 (LGPD) — atende o pedido de exclusão de conta.
+ *
+ * O que acontece com cada coisa ligada à pessoa:
+ *  - dados pessoais (nome, e-mail, telefone, curso...) são apagados da linha
+ *    de `usuario`, que fica só como âncora — assim as entregas, comentários
+ *    e o histórico da EQUIPE continuam íntegros, mas sem identificar ninguém;
+ *  - se ela era líder e a equipe tem outro integrante ativo, o mais antigo é
+ *    promovido a líder (Q1: nenhuma equipe fica sem líder);
+ *  - se ela era a única integrante, a equipe é excluída logicamente (Q4);
+ *  - vínculos de membro e de mentor são encerrados; sessões e tokens somem.
+ */
+export async function anonymizeUser(
+  id: string,
+  actor: Actor,
+): Promise<AnonymizeResult> {
+  const current = await repository.findById(id);
+
+  if (!current || current.anonimizado_em) {
+    throw new NotFoundError("Usuário não encontrado.", "USER_NOT_FOUND");
+  }
+
+  if (current.perfil === "ADMIN") {
+    const remaining = await repository.countActiveAdmins(id);
+    if (remaining === 0) {
+      throw new ConflictError(
+        "Este é o último administrador ativo do sistema e não pode ser excluído.",
+        "LAST_ACTIVE_ADMIN",
+      );
+    }
+  }
+
+  return withTransaction(async (client) => {
+    const result: AnonymizeResult = { promotedLeaders: [], deletedTeams: [] };
+
+    const leaderships = await repository.findLeaderships(client, id);
+
+    // Primeiro o líder sai (para liberar o índice "um líder por equipe"),
+    // depois o substituto assume.
+    await repository.deactivateMemberships(client, id);
+
+    for (const team of leaderships) {
+      if (team.substituto_id) {
+        await repository.promoteToLeader(client, team.equipe_id, team.substituto_id);
+        result.promotedLeaders.push({
+          teamId: team.equipe_id,
+          teamName: team.equipe_nome,
+          newLeaderName: team.substituto_nome ?? "",
+        });
+      } else {
+        await repository.softDeleteTeam(client, team.equipe_id, actor.id);
+        result.deletedTeams.push({ teamId: team.equipe_id, teamName: team.equipe_nome });
+        await recordAudit(
+          {
+            userId: actor.id,
+            action: "TEAM_DELETED",
+            entityType: "equipe",
+            entityId: team.equipe_id,
+            details: { reason: "LGPD: único integrante pediu exclusão da conta" },
+            ipAddress: actor.ipAddress ?? null,
+          },
+          client,
+        );
+      }
+    }
+
+    await repository.removeMentorships(client, id);
+    await repository.anonymize(client, id);
+
+    await recordAudit(
+      {
+        userId: actor.id,
+        action: "USER_ANONYMIZED",
+        entityType: "usuario",
+        entityId: id,
+        details: {
+          role: current.perfil,
+          promotedLeaders: result.promotedLeaders,
+          deletedTeams: result.deletedTeams,
+        },
+        ipAddress: actor.ipAddress ?? null,
+      },
+      client,
+    );
+
+    return result;
+  });
 }

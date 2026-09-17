@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import { createApp } from "./app.js";
 import { assertDatabaseConnection, closePool } from "./config/database.js";
 import { env } from "./config/env.js";
+import { startScheduler } from "./jobs/scheduler.js";
 
 async function bootstrap() {
   try {
@@ -24,7 +25,8 @@ async function bootstrap() {
     );
   });
 
-  registerShutdown(server);
+  const stopScheduler = startScheduler();
+  registerShutdown(server, stopScheduler);
 }
 
 /**
@@ -32,12 +34,13 @@ async function bootstrap() {
  * terminarem e fecha o pool do banco. Sem isso, um deploy pode cortar uma
  * transação no meio.
  */
-function registerShutdown(server: Server) {
+function registerShutdown(server: Server, stopScheduler: () => void) {
   let shuttingDown = false;
 
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    stopScheduler();
 
     console.log(`\n[server] ${signal} recebido, encerrando...`);
 

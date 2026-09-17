@@ -16,10 +16,16 @@ export type AuditAction =
   | "PASSWORD_RESET_REQUESTED"
   | "PASSWORD_RESET_COMPLETED"
   | "PASSWORD_CHANGED"
+  | "USER_ANONYMIZED"
+  | "TEAM_REGISTERED"
+  | "TEAM_DELETED"
   | "TEAM_STAGE_CHANGED"
+  | "TEAM_STAGE_ADDED"
+  | "TASK_CREATED"
+  | "TASK_UPDATED"
+  | "TASK_SUBMITTED"
   | "TASK_APPROVED"
-  | "TASK_REJECTED"
-  | "EMAIL_SENT";
+  | "TASK_REJECTED";
 
 export interface AuditInput {
   userId?: string | null;
@@ -41,7 +47,7 @@ export async function recordAudit(
   client?: PoolClient,
 ): Promise<void> {
   const sql = `
-    INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+    INSERT INTO auditoria (usuario_id, acao, entidade, entidade_id, detalhes, ip)
     VALUES ($1, $2, $3, $4, $5, $6)
   `;
   const params = [

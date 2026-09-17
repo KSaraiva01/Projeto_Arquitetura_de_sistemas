@@ -1,8 +1,10 @@
 /**
  * Tipos do domínio compartilhados entre módulos.
  *
- * Os valores em maiúsculas espelham exatamente os ENUMs do PostgreSQL —
- * quando um enum mudar no banco, ele precisa mudar aqui junto.
+ * Os valores em maiúsculas espelham exatamente os ENUMs do PostgreSQL
+ * (database/schema.sql) — quando um enum mudar no banco, ele precisa mudar
+ * aqui junto. Os nomes das tabelas e colunas são em português; os códigos
+ * dos enums são em inglês por serem o contrato da API com o front-end.
  */
 
 export const USER_ROLES = ["ADMIN", "MENTOR", "STUDENT"] as const;
@@ -36,29 +38,30 @@ export const TASK_STATUSES = [
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const EMAIL_TYPES = [
+export const SUBMISSION_TYPES = ["FILE", "LINK"] as const;
+export type SubmissionType = (typeof SUBMISSION_TYPES)[number];
+
+export const TOKEN_PURPOSES = ["FIRST_ACCESS", "PASSWORD_RESET"] as const;
+export type TokenPurpose = (typeof TOKEN_PURPOSES)[number];
+
+export const NOTIFICATION_TYPES = [
+  "NEW_REGISTRATION",
+  "FIRST_ACCESS",
+  "PASSWORD_RESET",
+  "ACCOUNT_CREATED",
   "NEW_TASK",
   "DEADLINE_REMINDER",
   "OVERDUE",
+  "SUBMITTED",
   "APPROVED",
   "REJECTED",
-  "NEW_REGISTRATION",
-  "FILE_SUBMITTED",
-  "MANUAL_REMINDER",
-  "PASSWORD_RESET",
-  "ACCOUNT_CREATED",
+  "STAGE_CHANGED",
 ] as const;
-export type EmailType = (typeof EMAIL_TYPES)[number];
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-/** As 6 etapas da jornada do empreendedor no InfoHub. */
-export const JOURNEY_STAGES = [1, 2, 3, 4, 5, 6] as const;
-export type JourneyStage = (typeof JOURNEY_STAGES)[number];
-
-export const JOURNEY_STAGE_NAMES: Record<JourneyStage, string> = {
-  1: "Envio da ideia",
-  2: "Contato com a equipe",
-  3: "Entendendo a ideia",
-  4: "Proposta de valor",
-  5: "Modelo de negócio",
-  6: "Pitch e inscrição",
-};
+/**
+ * Quantidade de etapas padrão da jornada (tabela `etapa`). As colunas do
+ * kanban vêm do banco; este número só serve para validar o `toStage` que o
+ * front manda como número.
+ */
+export const DEFAULT_STAGE_COUNT = 6;

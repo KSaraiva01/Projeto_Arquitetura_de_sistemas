@@ -3,66 +3,68 @@ import { query, queryOne } from "../../config/database.js";
 import type {
   JourneyStatus,
   TeamMemberRole,
+  TokenPurpose,
   UserRole,
 } from "../../shared/types/domain.js";
 
 export interface UserRow {
   id: string;
-  name: string;
+  nome: string;
   email: string;
-  password_hash: string;
-  phone: string | null;
-  course: string | null;
-  semester: string | null;
-  role: UserRole;
-  is_active: boolean;
-  last_login_at: Date | null;
-  created_at: Date;
+  senha_hash: string | null;
+  telefone: string | null;
+  curso: string | null;
+  semestre: string | null;
+  perfil: UserRole;
+  ativo: boolean;
+  ultimo_login_em: Date | null;
+  criado_em: Date;
 }
 
 export interface TeamMembershipRow {
-  team_id: string;
-  team_name: string;
-  member_role: TeamMemberRole;
-  journey_stage: number;
-  journey_status: JourneyStatus;
+  equipe_id: string;
+  equipe_nome: string;
+  papel: TeamMemberRole;
+  etapa_numero: number;
+  status_jornada: JourneyStatus;
 }
 
-export interface RefreshTokenRow {
+export interface SessionTokenRow {
   id: string;
-  user_id: string;
-  expires_at: Date;
-  revoked_at: Date | null;
+  usuario_id: string;
+  expira_em: Date;
+  revogado_em: Date | null;
 }
 
-export interface PasswordResetRow {
+export interface PasswordTokenRow {
   id: string;
-  user_id: string;
-  expires_at: Date;
-  used_at: Date | null;
+  usuario_id: string;
+  finalidade: TokenPurpose;
+  expira_em: Date;
+  usado_em: Date | null;
 }
 
 const USER_COLUMNS = `
-  id, name, email, password_hash, phone, course, semester,
-  role, is_active, last_login_at, created_at
+  id, nome, email, senha_hash, telefone, curso, semestre,
+  perfil, ativo, ultimo_login_em, criado_em
 `;
 
 export function findUserByEmail(email: string) {
   return queryOne<UserRow>(
-    `SELECT ${USER_COLUMNS} FROM app_user WHERE LOWER(email) = LOWER($1)`,
+    `SELECT ${USER_COLUMNS} FROM usuario WHERE LOWER(email) = LOWER($1)`,
     [email],
   );
 }
 
 export function findUserById(id: string) {
   return queryOne<UserRow>(
-    `SELECT ${USER_COLUMNS} FROM app_user WHERE id = $1`,
+    `SELECT ${USER_COLUMNS} FROM usuario WHERE id = $1`,
     [id],
   );
 }
 
 export async function touchLastLogin(userId: string) {
-  await query(`UPDATE app_user SET last_login_at = NOW() WHERE id = $1`, [
+  await query(`UPDATE usuario SET ultimo_login_em = NOW() WHERE id = $1`, [
     userId,
   ]);
 }
@@ -70,23 +72,28 @@ export async function touchLastLogin(userId: string) {
 /**
  * Equipes das quais o usuário participa.
  *
- * O frontend usa `member_role` para decidir entre a área do líder e a do
- * integrante — no banco, o papel de líder é por equipe (team_member.role),
- * não uma role global do usuário.
+ * O front usa `papel` para decidir entre a área do líder e a do integrante.
+ * `etapa_numero` é a coluna do kanban em que a equipe está: o número da última
+ * etapa padrão da jornada dela cuja ordem é <= a da etapa atual (uma etapa
+ * extra criada depois da 4 aparece na coluna 4).
  */
 export async function findTeamMemberships(userId: string) {
   const result = await query<TeamMembershipRow>(
-    `SELECT tm.team_id,
-            t.name           AS team_name,
-            tm.role          AS member_role,
-            t.journey_stage,
-            t.journey_status
-       FROM team_member tm
-       JOIN team t ON t.id = tm.team_id
-      WHERE tm.user_id = $1
-        AND tm.is_active
-        AND t.is_active
-      ORDER BY tm.joined_at`,
+    `SELECT em.equipe_id,
+            e.nome           AS equipe_nome,
+            em.papel,
+            e.status_jornada,
+            (SELECT MAX(et.numero)
+               FROM equipe_etapa ee2
+               JOIN etapa et ON et.id = ee2.etapa_id
+              WHERE ee2.equipe_id = e.id AND ee2.ordem <= atual.ordem) AS etapa_numero
+       FROM equipe_membro em
+       JOIN equipe e        ON e.id = em.equipe_id
+       JOIN equipe_etapa atual ON atual.id = e.etapa_atual_id
+      WHERE em.usuario_id = $1
+        AND em.ativo
+        AND e.excluida_em IS NULL
+      ORDER BY em.entrou_em`,
     [userId],
   );
 
@@ -95,19 +102,19 @@ export async function findTeamMemberships(userId: string) {
 
 /** Q10 — o mentor enxerga apenas as equipes que acompanha. */
 export async function findMentoredTeamIds(mentorId: string) {
-  const result = await query<{ team_id: string }>(
-    `SELECT tm.team_id
-       FROM team_mentor tm
-       JOIN team t ON t.id = tm.team_id
-      WHERE tm.mentor_id = $1 AND t.is_active`,
+  const result = await query<{ equipe_id: string }>(
+    `SELECT em.equipe_id
+       FROM equipe_mentor em
+       JOIN equipe e ON e.id = em.equipe_id
+      WHERE em.mentor_id = $1 AND e.excluida_em IS NULL`,
     [mentorId],
   );
 
-  return result.rows.map((row) => row.team_id);
+  return result.rows.map((row) => row.equipe_id);
 }
 
 // ---------------------------------------------------------------------------
-// Refresh tokens
+// Sessões (refresh tokens) — tabela token_sessao
 // ---------------------------------------------------------------------------
 
 export async function createRefreshToken(params: {
@@ -118,7 +125,7 @@ export async function createRefreshToken(params: {
   ipAddress?: string | null;
 }) {
   await query(
-    `INSERT INTO refresh_token (user_id, token_hash, expires_at, user_agent, ip_address)
+    `INSERT INTO token_sessao (usuario_id, token_hash, expira_em, user_agent, ip)
      VALUES ($1, $2, $3, $4, $5)`,
     [
       params.userId,
@@ -131,9 +138,9 @@ export async function createRefreshToken(params: {
 }
 
 export function findRefreshTokenByHash(tokenHash: string) {
-  return queryOne<RefreshTokenRow>(
-    `SELECT id, user_id, expires_at, revoked_at
-       FROM refresh_token
+  return queryOne<SessionTokenRow>(
+    `SELECT id, usuario_id, expira_em, revogado_em
+       FROM token_sessao
       WHERE token_hash = $1`,
     [tokenHash],
   );
@@ -141,9 +148,9 @@ export function findRefreshTokenByHash(tokenHash: string) {
 
 export async function revokeRefreshToken(tokenHash: string) {
   const result = await query(
-    `UPDATE refresh_token
-        SET revoked_at = NOW()
-      WHERE token_hash = $1 AND revoked_at IS NULL`,
+    `UPDATE token_sessao
+        SET revogado_em = NOW()
+      WHERE token_hash = $1 AND revogado_em IS NULL`,
     [tokenHash],
   );
 
@@ -155,8 +162,8 @@ export async function revokeAllRefreshTokens(
   userId: string,
   client?: PoolClient,
 ) {
-  const sql = `UPDATE refresh_token SET revoked_at = NOW()
-                WHERE user_id = $1 AND revoked_at IS NULL`;
+  const sql = `UPDATE token_sessao SET revogado_em = NOW()
+                WHERE usuario_id = $1 AND revogado_em IS NULL`;
 
   if (client) {
     await client.query(sql, [userId]);
@@ -165,27 +172,20 @@ export async function revokeAllRefreshTokens(
   await query(sql, [userId]);
 }
 
-/** Limpeza de tokens vencidos; pode ser chamada por uma rotina agendada. */
-export async function deleteExpiredRefreshTokens() {
-  const result = await query(
-    `DELETE FROM refresh_token WHERE expires_at < NOW() - INTERVAL '30 days'`,
-  );
-  return result.rowCount ?? 0;
-}
-
 // ---------------------------------------------------------------------------
-// Tokens de recuperação de senha
+// Tokens de senha (primeiro acesso e recuperação) — tabela token_senha
 // ---------------------------------------------------------------------------
 
-export async function createPasswordResetToken(params: {
+export async function createPasswordToken(params: {
   userId: string;
   tokenHash: string;
+  purpose: TokenPurpose;
   expiresAt: Date;
   client?: PoolClient;
 }) {
-  const sql = `INSERT INTO password_reset_token (user_id, token_hash, expires_at)
-               VALUES ($1, $2, $3)`;
-  const values = [params.userId, params.tokenHash, params.expiresAt];
+  const sql = `INSERT INTO token_senha (usuario_id, token_hash, finalidade, expira_em)
+               VALUES ($1, $2, $3, $4)`;
+  const values = [params.userId, params.tokenHash, params.purpose, params.expiresAt];
 
   if (params.client) {
     await params.client.query(sql, values);
@@ -194,25 +194,25 @@ export async function createPasswordResetToken(params: {
   await query(sql, values);
 }
 
-export function findPasswordResetByHash(tokenHash: string) {
-  return queryOne<PasswordResetRow>(
-    `SELECT id, user_id, expires_at, used_at
-       FROM password_reset_token
+export function findPasswordTokenByHash(tokenHash: string) {
+  return queryOne<PasswordTokenRow>(
+    `SELECT id, usuario_id, finalidade, expira_em, usado_em
+       FROM token_senha
       WHERE token_hash = $1`,
     [tokenHash],
   );
 }
 
 /**
- * Invalida os pedidos de redefinição ainda abertos do usuário.
+ * Invalida os tokens ainda abertos do usuário.
  * Chamado antes de gerar um novo, para que só o último link funcione.
  */
-export async function invalidatePasswordResetTokens(
+export async function invalidatePasswordTokens(
   userId: string,
   client?: PoolClient,
 ) {
-  const sql = `UPDATE password_reset_token SET used_at = NOW()
-                WHERE user_id = $1 AND used_at IS NULL`;
+  const sql = `UPDATE token_senha SET usado_em = NOW()
+                WHERE usuario_id = $1 AND usado_em IS NULL`;
 
   if (client) {
     await client.query(sql, [userId]);
@@ -226,21 +226,21 @@ export async function invalidatePasswordResetTokens(
  * tudo na mesma transação, para não existir estado intermediário em que a
  * senha mudou mas o token continua válido.
  */
-export async function consumePasswordReset(
+export async function consumePasswordToken(
   client: PoolClient,
   params: { tokenId: string; userId: string; passwordHash: string },
 ) {
   await client.query(
-    `UPDATE password_reset_token SET used_at = NOW() WHERE id = $1`,
+    `UPDATE token_senha SET usado_em = NOW() WHERE id = $1`,
     [params.tokenId],
   );
   await client.query(
-    `UPDATE app_user SET password_hash = $2 WHERE id = $1`,
+    `UPDATE usuario SET senha_hash = $2 WHERE id = $1`,
     [params.userId, params.passwordHash],
   );
   await client.query(
-    `UPDATE refresh_token SET revoked_at = NOW()
-      WHERE user_id = $1 AND revoked_at IS NULL`,
+    `UPDATE token_sessao SET revogado_em = NOW()
+      WHERE usuario_id = $1 AND revogado_em IS NULL`,
     [params.userId],
   );
 }
@@ -250,7 +250,7 @@ export async function updatePassword(
   userId: string,
   passwordHash: string,
 ) {
-  await client.query(`UPDATE app_user SET password_hash = $2 WHERE id = $1`, [
+  await client.query(`UPDATE usuario SET senha_hash = $2 WHERE id = $1`, [
     userId,
     passwordHash,
   ]);

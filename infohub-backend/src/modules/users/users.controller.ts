@@ -56,3 +56,15 @@ export const updateStatus: RequestHandler = async (req, res) => {
     message: isActive ? "Conta reativada." : "Conta desativada.",
   });
 };
+
+/** RNF-02 (LGPD) — exclusão da conta pelo administrador. */
+export const remove: RequestHandler = async (req, res) => {
+  const { id } = getParams<UserIdParam>(res);
+  const result = await service.anonymizeUser(id, actorFrom(req));
+
+  res.status(200).json({
+    ...result,
+    message:
+      "Conta excluída: os dados pessoais foram apagados e os vínculos com equipes, encerrados.",
+  });
+};

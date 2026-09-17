@@ -36,3 +36,12 @@ export const passwordResetLimiter = rateLimit({
     "Muitas solicitações de recuperação de senha. Tente novamente mais tarde.",
   ),
 });
+
+/** RF-02: o formulário de ideia é público; limita cadastros em massa por IP. */
+export const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: env.isDevelopment ? 100 : 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: json("Muitos cadastros a partir deste endereço. Tente novamente mais tarde."),
+});

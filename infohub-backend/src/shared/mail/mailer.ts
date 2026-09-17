@@ -1,16 +1,18 @@
 import { env } from "../../config/env.js";
 import { query } from "../../config/database.js";
-import type { EmailType } from "../types/domain.js";
+import type { NotificationType } from "../types/domain.js";
 
 export interface SendMailInput {
   to: string;
   subject: string;
   html: string;
   text: string;
-  type: EmailType;
+  type: NotificationType;
   recipientId?: string | null;
-  taskId?: string | null;
   teamId?: string | null;
+  taskId?: string | null;
+  /** RF-17: id do lembrete — garante que ele vá uma única vez por destinatário. */
+  reminderId?: string | null;
 }
 
 interface DeliveryResult {
@@ -18,57 +20,70 @@ interface DeliveryResult {
 }
 
 /**
- * Envio transacional (RNF-06).
+ * Envio transacional (RF-18, RNF-06).
  *
- * Todo envio é registrado em `email_log` antes de sair, e o log é atualizado
- * com SENT ou FAILED depois. Assim a coordenação consegue auditar o que foi
- * disparado, e uma rotina de reprocessamento pode reenviar o que falhou sem
- * precisar reconstruir o conteúdo.
+ * Todo envio é registrado em `notificacao` antes de sair, e o registro é
+ * atualizado com SENT ou FAILED depois. Os índices únicos parciais da tabela
+ * (lembrete + destinatário; atraso + tarefa + destinatário) fazem o INSERT
+ * cair no `ON CONFLICT DO NOTHING` quando o mesmo e-mail já foi registrado —
+ * e aí nada é enviado. É assim que o sistema "sabe o que já notificou".
+ *
+ * Devolve `true` quando o e-mail foi de fato disparado e `false` quando foi
+ * pulado por já existir.
  */
-export async function sendMail(input: SendMailInput): Promise<void> {
+export async function sendMail(input: SendMailInput): Promise<boolean> {
   const logId = await createLogEntry(input);
 
+  if (!logId) {
+    return false;
+  }
+
   try {
-    const { providerId } = await deliver(input);
+    await deliver(input);
 
     await query(
-      `UPDATE email_log
-          SET status = 'SENT', sent_at = NOW(), attempts = attempts + 1, provider_id = $2
+      `UPDATE notificacao
+          SET status = 'SENT', enviado_em = NOW(), tentativas = tentativas + 1
         WHERE id = $1`,
-      [logId, providerId],
+      [logId],
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
     await query(
-      `UPDATE email_log
-          SET status = 'FAILED', attempts = attempts + 1, error = $2
+      `UPDATE notificacao
+          SET status = 'FAILED', tentativas = tentativas + 1, erro = $2
         WHERE id = $1`,
       [logId, message],
     );
 
     // Um e-mail que não sai não pode derrubar a operação que o disparou
-    // (ex.: criar um usuário). O log guarda a falha para reprocessamento.
+    // (ex.: criar um usuário). O registro guarda a falha para reprocessamento.
     console.error(`[mail] falha ao enviar "${input.subject}" para ${input.to}:`, message);
   }
+
+  return true;
 }
 
-async function createLogEntry(input: SendMailInput): Promise<string> {
+async function createLogEntry(input: SendMailInput): Promise<string | null> {
   const result = await query<{ id: string }>(
-    `INSERT INTO email_log (recipient_id, recipient_email, type, subject, task_id, team_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO notificacao
+       (destinatario_id, email_destino, tipo, assunto, equipe_id, tarefa_id, lembrete_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT DO NOTHING
      RETURNING id`,
     [
       input.recipientId ?? null,
       input.to,
       input.type,
       input.subject,
-      input.taskId ?? null,
       input.teamId ?? null,
+      input.taskId ?? null,
+      input.reminderId ?? null,
     ],
   );
 
-  return result.rows[0]!.id;
+  return result.rows[0]?.id ?? null;
 }
 
 async function deliver(input: SendMailInput): Promise<DeliveryResult> {

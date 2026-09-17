@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { withTransaction } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import { recordAudit } from "../../shared/audit.js";
@@ -7,6 +8,7 @@ import {
 } from "../../shared/errors/AppError.js";
 import { sendMail } from "../../shared/mail/mailer.js";
 import {
+  firstAccessTemplate,
   passwordChangedTemplate,
   passwordResetTemplate,
 } from "../../shared/mail/templates.js";
@@ -40,7 +42,7 @@ export interface PublicUser {
   id: string;
   name: string;
   email: string;
-  role: UserRow["role"];
+  role: UserRow["perfil"];
   phone: string | null;
   course: string | null;
   semester: string | null;
@@ -63,14 +65,14 @@ function toPublicUser(
 ): PublicUser {
   return {
     id: user.id,
-    name: user.name,
+    name: user.nome,
     email: user.email,
-    role: user.role,
-    phone: user.phone,
-    course: user.course,
-    semester: user.semester,
-    isActive: user.is_active,
-    createdAt: user.created_at,
+    role: user.perfil,
+    phone: user.telefone,
+    course: user.curso,
+    semester: user.semestre,
+    isActive: user.ativo,
+    createdAt: user.criado_em,
     teams,
     ...(mentoredTeamIds ? { mentoredTeamIds } : {}),
   };
@@ -84,14 +86,14 @@ function toPublicUser(
 export async function buildPublicUser(user: UserRow): Promise<PublicUser> {
   const memberships = await repository.findTeamMemberships(user.id);
   const teams = memberships.map((row) => ({
-    id: row.team_id,
-    name: row.team_name,
-    memberRole: row.member_role,
-    journeyStage: row.journey_stage,
-    journeyStatus: row.journey_status,
+    id: row.equipe_id,
+    name: row.equipe_nome,
+    memberRole: row.papel,
+    journeyStage: row.etapa_numero,
+    journeyStatus: row.status_jornada,
   }));
 
-  if (user.role === "MENTOR") {
+  if (user.perfil === "MENTOR") {
     const mentoredTeamIds = await repository.findMentoredTeamIds(user.id);
     return toPublicUser(user, teams, mentoredTeamIds);
   }
@@ -118,9 +120,9 @@ async function issueSession(
 
   const accessToken = signAccessToken({
     sub: user.id,
-    role: user.role,
+    role: user.perfil,
     email: user.email,
-    name: user.name,
+    name: user.nome,
   });
 
   return {
@@ -138,6 +140,9 @@ async function issueSession(
  * que diz ao frontend para qual painel redirecionar. E-mail inexistente e
  * senha errada devolvem exatamente a mesma mensagem, para não revelar quais
  * contas existem.
+ *
+ * RF-02: conta criada pelo formulário ainda sem senha (senha_hash NULL) não
+ * entra — precisa usar o link de primeiro acesso recebido por e-mail.
  */
 export async function login(
   input: { email: string; password: string },
@@ -145,18 +150,25 @@ export async function login(
 ): Promise<AuthenticatedSession> {
   const user = await repository.findUserByEmail(input.email);
 
-  // Mesmo sem usuário rodamos um bcrypt.compare, para o tempo de resposta
-  // não denunciar a existência da conta.
+  // Mesmo sem usuário (ou sem senha) rodamos um bcrypt.compare, para o tempo
+  // de resposta não denunciar a existência da conta.
   const passwordMatches = await verifyPassword(
     input.password,
-    user?.password_hash ?? DUMMY_PASSWORD_HASH,
+    user?.senha_hash ?? DUMMY_PASSWORD_HASH,
   );
+
+  if (user && user.senha_hash === null) {
+    throw new ForbiddenError(
+      "Sua conta ainda não tem senha. Use o link de primeiro acesso enviado por e-mail (ou peça um novo em 'Esqueci minha senha').",
+      "PASSWORD_NOT_SET",
+    );
+  }
 
   if (!user || !passwordMatches) {
     await recordAudit({
       userId: user?.id ?? null,
       action: "USER_LOGIN_FAILED",
-      entityType: "app_user",
+      entityType: "usuario",
       entityId: user?.id ?? null,
       details: { email: input.email },
       ipAddress: context.ipAddress ?? null,
@@ -168,7 +180,7 @@ export async function login(
     );
   }
 
-  if (!user.is_active) {
+  if (!user.ativo) {
     throw new ForbiddenError(
       "Esta conta está desativada. Procure a coordenação do InfoHub.",
       "ACCOUNT_DISABLED",
@@ -179,7 +191,7 @@ export async function login(
   await recordAudit({
     userId: user.id,
     action: "USER_LOGIN",
-    entityType: "app_user",
+    entityType: "usuario",
     entityId: user.id,
     ipAddress: context.ipAddress ?? null,
   });
@@ -200,17 +212,17 @@ export async function refresh(
   const tokenHash = hashToken(refreshToken);
   const stored = await repository.findRefreshTokenByHash(tokenHash);
 
-  if (!stored || stored.revoked_at || stored.expires_at.getTime() < Date.now()) {
+  if (!stored || stored.revogado_em || stored.expira_em.getTime() < Date.now()) {
     throw new UnauthorizedError(
       "Sessão inválida ou expirada. Faça login novamente.",
       "INVALID_REFRESH_TOKEN",
     );
   }
 
-  const user = await repository.findUserById(stored.user_id);
+  const user = await repository.findUserById(stored.usuario_id);
 
-  if (!user || !user.is_active) {
-    await repository.revokeAllRefreshTokens(stored.user_id);
+  if (!user || !user.ativo) {
+    await repository.revokeAllRefreshTokens(stored.usuario_id);
     throw new UnauthorizedError(
       "Sessão inválida. Faça login novamente.",
       "INVALID_REFRESH_TOKEN",
@@ -234,7 +246,7 @@ export async function logout(
     await recordAudit({
       userId,
       action: "USER_LOGOUT",
-      entityType: "app_user",
+      entityType: "usuario",
       entityId: userId,
       ipAddress: context.ipAddress ?? null,
     });
@@ -242,10 +254,43 @@ export async function logout(
 }
 
 /**
+ * Gera (dentro de uma transação) um token de definição de senha para o
+ * usuário e devolve o valor em claro, que só existe no e-mail. Usado no
+ * cadastro do aluno (RF-02), na criação de admin/mentor (RF-03) e na
+ * recuperação (RF-01).
+ */
+export async function issuePasswordToken(
+  client: PoolClient,
+  userId: string,
+  purpose: "FIRST_ACCESS" | "PASSWORD_RESET",
+): Promise<{ token: string; expiresAt: Date }> {
+  const token = generateOpaqueToken();
+  const ttlMs =
+    purpose === "FIRST_ACCESS"
+      ? env.FIRST_ACCESS_EXPIRES_IN_HOURS * 60 * 60 * 1000
+      : env.PASSWORD_RESET_EXPIRES_IN_MINUTES * 60 * 1000;
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  await repository.invalidatePasswordTokens(userId, client);
+  await repository.createPasswordToken({
+    userId,
+    tokenHash: hashToken(token),
+    purpose,
+    expiresAt,
+    client,
+  });
+
+  return { token, expiresAt };
+}
+
+/**
  * RF-01 — solicitação de recuperação de senha.
  *
  * A resposta é sempre a mesma, exista o e-mail ou não: o endpoint é público
  * e não pode servir para descobrir quem tem conta no sistema.
+ *
+ * Se a conta ainda não tem senha (aluno que perdeu o e-mail de boas-vindas),
+ * o que sai é um novo link de PRIMEIRO ACESSO, não de recuperação.
  */
 export async function requestPasswordReset(
   email: string,
@@ -253,37 +298,47 @@ export async function requestPasswordReset(
 ): Promise<void> {
   const user = await repository.findUserByEmail(email);
 
-  if (!user || !user.is_active) {
+  if (!user || !user.ativo) {
     return;
   }
 
-  const token = generateOpaqueToken();
-  const expiresAt = new Date(
-    Date.now() + env.PASSWORD_RESET_EXPIRES_IN_MINUTES * 60 * 1000,
-  );
+  const purpose = user.senha_hash === null ? "FIRST_ACCESS" : "PASSWORD_RESET";
 
-  await withTransaction(async (client) => {
-    await repository.invalidatePasswordResetTokens(user.id, client);
-    await repository.createPasswordResetToken({
-      userId: user.id,
-      tokenHash: hashToken(token),
-      expiresAt,
-      client,
-    });
+  const { token } = await withTransaction(async (client) => {
+    const issued = await issuePasswordToken(client, user.id, purpose);
     await recordAudit(
       {
         userId: user.id,
         action: "PASSWORD_RESET_REQUESTED",
-        entityType: "app_user",
+        entityType: "usuario",
         entityId: user.id,
+        details: { purpose },
         ipAddress: context.ipAddress ?? null,
       },
       client,
     );
+    return issued;
   });
 
+  if (purpose === "FIRST_ACCESS") {
+    const memberships = await repository.findTeamMemberships(user.id);
+    const template = firstAccessTemplate(
+      user.nome,
+      memberships[0]?.equipe_nome ?? "InfoHub",
+      token,
+      env.FIRST_ACCESS_EXPIRES_IN_HOURS,
+    );
+    await sendMail({
+      to: user.email,
+      recipientId: user.id,
+      type: "FIRST_ACCESS",
+      ...template,
+    });
+    return;
+  }
+
   const template = passwordResetTemplate(
-    user.name,
+    user.nome,
     token,
     env.PASSWORD_RESET_EXPIRES_IN_MINUTES,
   );
@@ -296,24 +351,28 @@ export async function requestPasswordReset(
   });
 }
 
-/** RF-01 — conclusão da recuperação: token de uso único, com validade. */
+/**
+ * RF-01/RF-02 — conclusão: define a senha usando o token do e-mail. Serve
+ * tanto para o primeiro acesso quanto para a recuperação; o token é de uso
+ * único e tem validade.
+ */
 export async function resetPassword(
   input: { token: string; password: string },
   context: RequestContext,
 ): Promise<void> {
   const tokenHash = hashToken(input.token);
-  const stored = await repository.findPasswordResetByHash(tokenHash);
+  const stored = await repository.findPasswordTokenByHash(tokenHash);
 
-  if (!stored || stored.used_at || stored.expires_at.getTime() < Date.now()) {
+  if (!stored || stored.usado_em || stored.expira_em.getTime() < Date.now()) {
     throw new UnauthorizedError(
-      "Este link de redefinição é inválido ou já expirou. Solicite um novo.",
+      "Este link é inválido ou já expirou. Solicite um novo em 'Esqueci minha senha'.",
       "INVALID_RESET_TOKEN",
     );
   }
 
-  const user = await repository.findUserById(stored.user_id);
+  const user = await repository.findUserById(stored.usuario_id);
 
-  if (!user || !user.is_active) {
+  if (!user || !user.ativo) {
     throw new UnauthorizedError(
       "Este link de redefinição é inválido.",
       "INVALID_RESET_TOKEN",
@@ -323,7 +382,7 @@ export async function resetPassword(
   const passwordHash = await hashPassword(input.password);
 
   await withTransaction(async (client) => {
-    await repository.consumePasswordReset(client, {
+    await repository.consumePasswordToken(client, {
       tokenId: stored.id,
       userId: user.id,
       passwordHash,
@@ -332,21 +391,25 @@ export async function resetPassword(
       {
         userId: user.id,
         action: "PASSWORD_RESET_COMPLETED",
-        entityType: "app_user",
+        entityType: "usuario",
         entityId: user.id,
+        details: { purpose: stored.finalidade },
         ipAddress: context.ipAddress ?? null,
       },
       client,
     );
   });
 
-  const template = passwordChangedTemplate(user.name);
-  await sendMail({
-    to: user.email,
-    recipientId: user.id,
-    type: "PASSWORD_RESET",
-    ...template,
-  });
+  // No primeiro acesso não faz sentido avisar que "a senha foi alterada".
+  if (stored.finalidade === "PASSWORD_RESET") {
+    const template = passwordChangedTemplate(user.nome);
+    await sendMail({
+      to: user.email,
+      recipientId: user.id,
+      type: "PASSWORD_RESET",
+      ...template,
+    });
+  }
 }
 
 /** Troca de senha por um usuário já autenticado. */
@@ -361,9 +424,12 @@ export async function changePassword(
     throw new UnauthorizedError("Usuário não encontrado.", "USER_NOT_FOUND");
   }
 
-  const matches = await verifyPassword(input.currentPassword, user.password_hash);
+  const matches = await verifyPassword(
+    input.currentPassword,
+    user.senha_hash ?? DUMMY_PASSWORD_HASH,
+  );
 
-  if (!matches) {
+  if (!matches || user.senha_hash === null) {
     throw new UnauthorizedError(
       "A senha atual está incorreta.",
       "INVALID_CREDENTIALS",
@@ -379,7 +445,7 @@ export async function changePassword(
       {
         userId: user.id,
         action: "PASSWORD_CHANGED",
-        entityType: "app_user",
+        entityType: "usuario",
         entityId: user.id,
         ipAddress: context.ipAddress ?? null,
       },
@@ -387,7 +453,7 @@ export async function changePassword(
     );
   });
 
-  const template = passwordChangedTemplate(user.name);
+  const template = passwordChangedTemplate(user.nome);
   await sendMail({
     to: user.email,
     recipientId: user.id,
@@ -404,4 +470,19 @@ export async function getCurrentUser(userId: string): Promise<PublicUser> {
   }
 
   return buildPublicUser(user);
+}
+
+/** Confere a senha do próprio usuário antes de uma ação sensível (exclusão LGPD). */
+export async function assertOwnPassword(userId: string, password: string) {
+  const user = await repository.findUserById(userId);
+  const matches = await verifyPassword(
+    password,
+    user?.senha_hash ?? DUMMY_PASSWORD_HASH,
+  );
+
+  if (!user || !user.senha_hash || !matches) {
+    throw new UnauthorizedError("Senha incorreta.", "INVALID_CREDENTIALS");
+  }
+
+  return user;
 }

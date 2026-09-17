@@ -47,6 +47,12 @@ export const changePasswordSchema = z
     path: ["newPassword"],
   });
 
+/** RNF-02 — o próprio usuário pede a exclusão da conta confirmando a senha. */
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Confirme sua senha para excluir a conta."),
+});
+
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
