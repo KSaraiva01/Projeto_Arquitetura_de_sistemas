@@ -1,15 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Inbox,
   Loader2,
   Users,
+  X,
 } from "lucide-react";
+import { BoardSkeleton } from "./Skeleton";
 import { api, ApiError } from "@/lib/api";
 import {
   JOURNEY_STATUS_LABELS,
@@ -24,6 +28,8 @@ interface KanbanBoardProps {
   detailBasePath: string;
   filters?: Record<string, string>;
   onBoardChange?: (board: ApiBoard) => void;
+  /** Quando o quadro vem vazio por causa dos filtros, oferece limpá-los. */
+  onClearFilters?: () => void;
 }
 
 interface PendingMove {
@@ -46,6 +52,7 @@ export default function KanbanBoard({
   detailBasePath,
   filters,
   onBoardChange,
+  onClearFilters,
 }: KanbanBoardProps) {
   const [board, setBoard] = useState<ApiBoard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,11 +94,30 @@ export default function KanbanBoard({
     void loadBoard();
   }, [loadBoard]);
 
+  // Rolagem horizontal: as 6 colunas passam de 1.700px, então as bordas
+  // ganham um degradê e um botão enquanto houver mais quadro daquele lado —
+  // sem isso ninguém descobre as etapas 5 e 6.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScroll, setCanScroll] = useState({ left: false, right: false });
+
+  const updateScrollCues = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScroll({
+      left: el.scrollLeft > 8,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 8,
+    });
+  }, []);
+
   useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 5000);
-    return () => clearTimeout(timer);
-  }, [toast]);
+    updateScrollCues();
+    window.addEventListener("resize", updateScrollCues);
+    return () => window.removeEventListener("resize", updateScrollCues);
+  }, [updateScrollCues, board]);
+
+  function scrollBoard(direction: -1 | 1) {
+    scrollRef.current?.scrollBy({ left: direction * 300, behavior: "smooth" });
+  }
 
   /**
    * Move a equipe de etapa.
@@ -162,17 +188,12 @@ export default function KanbanBoard({
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-20 text-muted">
-        <Loader2 className="w-4 h-4 animate-spin" />
-        Carregando o quadro...
-      </div>
-    );
+    return <BoardSkeleton />;
   }
 
   if (error) {
     return (
-      <div className="bg-card border border-card-border rounded-xl p-8 text-center">
+      <div className="animate-rise bg-card border border-card-border rounded-xl p-8 text-center">
         <AlertTriangle className="w-8 h-8 text-danger mx-auto mb-3" />
         <p className="text-sm text-foreground mb-1">{error}</p>
         <button
@@ -187,6 +208,33 @@ export default function KanbanBoard({
 
   if (!board) return null;
 
+  const isEmpty = board.columns.every((column) => column.teams.length === 0);
+
+  if (isEmpty) {
+    return (
+      <div className="animate-rise flex flex-col items-center rounded-xl border border-card-border bg-card px-6 py-12 text-center">
+        <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-light text-primary">
+          <Inbox className="h-7 w-7" />
+        </div>
+        <p className="text-sm font-semibold text-foreground">Nenhuma equipe com estes filtros</p>
+        <p className="mt-1 max-w-sm text-xs text-muted">
+          Tente outra área, status ou mentor — ou limpe os filtros para ver o quadro completo.
+        </p>
+        {onClearFilters && (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="mt-4 rounded-lg border border-card-border bg-card px-4 py-2 text-xs font-medium text-foreground transition-colors hover:bg-hover-bg"
+          >
+            Limpar filtros
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  let cardIndex = 0;
+
   return (
     <>
       {board.canDrag && (
@@ -196,7 +244,12 @@ export default function KanbanBoard({
         </p>
       )}
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="relative">
+        <div
+          ref={scrollRef}
+          onScroll={updateScrollCues}
+          className="flex gap-4 overflow-x-auto pb-4"
+        >
         {board.columns.map((column) => {
           const isTarget = dropTarget === column.stage;
 
@@ -228,15 +281,15 @@ export default function KanbanBoard({
                   )
                 }
                 onDrop={(event) => handleDrop(event, column.stage)}
-                className={`rounded-b-xl p-3 space-y-3 min-h-[220px] border transition-colors ${
+                className={`rounded-b-xl p-3 space-y-3 min-h-[220px] border transition-colors duration-150 ${
                   isTarget
-                    ? "bg-primary/5 border-primary border-dashed"
+                    ? "animate-drop-pulse bg-primary/5 border-2 border-dashed border-primary"
                     : "bg-kanban-col-bg/50 border-kanban-col-border"
                 }`}
               >
                 {column.teams.length === 0 && (
-                  <p className="text-xs text-muted-light text-center py-8">
-                    {isTarget ? "Solte aqui" : "Nenhuma equipe"}
+                  <p className={`text-xs text-center py-8 ${isTarget ? "text-primary font-medium" : "text-muted-light"}`}>
+                    {isTarget ? `Solte aqui para mover para a etapa ${column.stage}` : "Nenhuma equipe"}
                   </p>
                 )}
 
@@ -244,6 +297,7 @@ export default function KanbanBoard({
                   <TeamCard
                     key={team.id}
                     team={team}
+                    index={cardIndex++}
                     canDrag={board.canDrag}
                     isDragging={draggingId === team.id}
                     isMoving={movingId === team.id}
@@ -264,6 +318,10 @@ export default function KanbanBoard({
             </div>
           );
         })}
+        </div>
+
+        <ScrollCue side="left" visible={canScroll.left} onClick={() => scrollBoard(-1)} />
+        <ScrollCue side="right" visible={canScroll.right} onClick={() => scrollBoard(1)} />
       </div>
 
       {pendingMove && (
@@ -283,23 +341,133 @@ export default function KanbanBoard({
       )}
 
       {toast && (
-        <div
-          role="status"
-          className={`fixed bottom-6 right-6 z-50 max-w-sm px-4 py-3 rounded-lg shadow-lg text-sm ${
-            toast.kind === "ok"
-              ? "bg-success text-white"
-              : "bg-danger text-white"
-          }`}
-        >
-          {toast.text}
-        </div>
+        <Toast
+          key={toast.text}
+          kind={toast.kind}
+          text={toast.text}
+          onClose={() => setToast(null)}
+        />
       )}
     </>
   );
 }
 
+/**
+ * Degradê + botão numa das bordas do quadro, visíveis só enquanto há
+ * colunas escondidas daquele lado.
+ */
+function ScrollCue({
+  side,
+  visible,
+  onClick,
+}: {
+  side: "left" | "right";
+  visible: boolean;
+  onClick: () => void;
+}) {
+  const edge = side === "left" ? "left-0" : "right-0";
+  const gradient =
+    side === "left"
+      ? "bg-gradient-to-r from-background to-transparent"
+      : "bg-gradient-to-l from-background to-transparent";
+
+  return (
+    <div
+      className={`pointer-events-none absolute top-0 bottom-4 w-20 transition-opacity duration-200 ${edge} ${gradient} ${
+        visible ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        tabIndex={visible ? 0 : -1}
+        aria-hidden={!visible}
+        aria-label={side === "left" ? "Rolar para as etapas anteriores" : "Rolar para as próximas etapas"}
+        className={`absolute top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-card-border bg-card text-muted shadow-[0_4px_10px_-4px_rgba(17,24,39,0.25)] transition-colors hover:bg-hover-bg hover:text-foreground ${
+          side === "left" ? "left-2" : "right-2"
+        } ${visible ? "pointer-events-auto" : "pointer-events-none"}`}
+      >
+        {side === "left" ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Aviso no canto: entra da direita, mostra quanto tempo falta na barra de
+ * baixo, pausa enquanto o mouse está em cima e sai para baixo. Fecha no X
+ * ou sozinho em 5s.
+ */
+function Toast({
+  kind,
+  text,
+  onClose,
+}: {
+  kind: "ok" | "erro";
+  text: string;
+  onClose: () => void;
+}) {
+  const [paused, setPaused] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const remaining = useRef(5000);
+  const startedAt = useRef(0);
+
+  const dismiss = useCallback(() => {
+    setLeaving(true);
+    window.setTimeout(onClose, 200);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (paused || leaving) return;
+    startedAt.current = performance.now();
+    const timer = window.setTimeout(dismiss, remaining.current);
+    return () => {
+      window.clearTimeout(timer);
+      remaining.current = Math.max(0, remaining.current - (performance.now() - startedAt.current));
+    };
+  }, [paused, leaving, dismiss]);
+
+  const isOk = kind === "ok";
+
+  return (
+    <div
+      role="status"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      className={`fixed bottom-6 right-6 z-50 flex w-[360px] max-w-[calc(100vw-3rem)] items-start gap-2.5 overflow-hidden rounded-[10px] border border-card-border border-l-4 bg-card py-3 pl-3.5 pr-3 shadow-lg ${
+        isOk ? "border-l-success" : "border-l-danger"
+      } ${leaving ? "animate-toast-out" : "animate-toast-in"}`}
+    >
+      {isOk ? (
+        <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-success" />
+      ) : (
+        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+      )}
+      <p className="flex-1 text-sm text-foreground">{text}</p>
+      <button
+        type="button"
+        onClick={dismiss}
+        aria-label="Fechar aviso"
+        className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-hover-bg hover:text-foreground"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <span
+        aria-hidden="true"
+        className={`absolute bottom-0 left-0 h-[3px] w-full origin-left ${isOk ? "bg-success/35" : "bg-danger/35"}`}
+        style={{
+          // A barra encolhe de 1 para 0 no mesmo tempo do aviso.
+          animation: "toast-bar 5s linear forwards",
+          animationPlayState: paused ? "paused" : "running",
+        }}
+      />
+    </div>
+  );
+}
+
 function TeamCard({
   team,
+  index,
   canDrag,
   isDragging,
   isMoving,
@@ -309,6 +477,7 @@ function TeamCard({
   onStep,
 }: {
   team: ApiTeamCard;
+  index: number;
   canDrag: boolean;
   isDragging: boolean;
   isMoving: boolean;
@@ -322,12 +491,16 @@ function TeamCard({
       draggable={canDrag && !isMoving}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      // A opacidade dos estados transitórios (arrastando / salvando) vai
-      // inline em vez de classe utilitária: é um estado momentâneo, não um
-      // estilo do componente, e assim não depende da cascata do CSS.
-      style={{ opacity: isDragging ? 0.4 : isMoving ? 0.6 : undefined }}
-      className={`group relative bg-card rounded-lg border border-card-border p-4 transition-all hover:border-primary/30 ${
-        canDrag ? "cursor-grab active:cursor-grabbing" : ""
+      // Os estados transitórios (arrastando / salvando) vão inline em vez
+      // de classe utilitária: são momentâneos, não estilo do componente, e
+      // assim não dependem da cascata do CSS. Cada cartão entra 40ms depois
+      // do anterior.
+      style={{
+        opacity: isDragging ? 0.4 : isMoving ? 0.6 : undefined,
+        animationDelay: `${Math.min(index, 10) * 40}ms`,
+      }}
+      className={`group relative animate-rise bg-card rounded-lg border border-card-border p-4 transition-[transform,box-shadow,border-color] duration-150 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_8px_20px_-8px_rgba(17,24,39,0.2)] ${
+        canDrag ? "cursor-grab active:cursor-grabbing active:rotate-2 active:scale-[1.02] active:shadow-[0_16px_32px_-12px_rgba(17,24,39,0.35)]" : ""
       } ${isMoving ? "pointer-events-none" : ""}`}
     >
       {isMoving && (
@@ -427,16 +600,28 @@ function ConfirmAdvanceDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Esc fecha; o foco vai para a caixa de motivo, que é o que se preenche.
+  const reasonRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    reasonRef.current?.focus();
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancel();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-advance-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onClick={onCancel}
     >
       <div
-        className="bg-card rounded-2xl border border-card-border shadow-xl max-w-lg w-full p-6"
+        className="animate-dialog-in bg-card rounded-2xl border border-card-border shadow-xl max-w-lg w-full p-6"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start gap-3 mb-4">
@@ -476,6 +661,7 @@ function ConfirmAdvanceDialog({
           <span className="text-muted-light font-normal"> (opcional)</span>
         </label>
         <textarea
+          ref={reasonRef}
           value={reason}
           onChange={(event) => onReasonChange(event.target.value)}
           rows={2}
@@ -490,9 +676,10 @@ function ConfirmAdvanceDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-muted hover:text-foreground rounded-lg hover:bg-hover-bg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-muted hover:text-foreground rounded-lg hover:bg-hover-bg transition-colors inline-flex items-center gap-2"
           >
             Cancelar
+            <kbd className="rounded border border-card-border px-1 text-[10px] font-normal text-muted-light">Esc</kbd>
           </button>
           <button
             type="button"

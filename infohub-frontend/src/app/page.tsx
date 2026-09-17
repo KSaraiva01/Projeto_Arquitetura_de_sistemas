@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Rocket, Users, ClipboardCheck, BarChart3, ArrowRight, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Rocket, Users, ClipboardCheck, BarChart3, ArrowRight, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import InfoHubLogo from "@/components/InfoHubLogo";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -120,34 +120,53 @@ export default function LoginPage() {
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="pt-28 pb-16 px-6">
-        <div className="max-w-6xl mx-auto text-center">
-          <div className="flex justify-center mb-6">
+      {/* Hero — cada bloco entra 100ms depois do anterior, de cima para
+          baixo, e o logo flutua de leve sobre um brilho na cor da marca. */}
+      <section className="relative overflow-hidden pt-28 pb-16 px-6">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-10 h-80 w-[720px] -translate-x-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(245,166,35,0.28),rgba(229,53,37,0.12),transparent)] blur-2xl animate-fade-in"
+          style={{ animationDuration: "1200ms" }}
+        />
+        <div className="relative max-w-6xl mx-auto text-center">
+          <div className="animate-rise flex justify-center mb-6" style={{ animationDuration: "480ms" }}>
             <InfoHubLogo size="lg" showTagline />
           </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full mb-6">
+          <div
+            className="animate-rise inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full mb-6"
+            style={{ animationDelay: "100ms", animationDuration: "480ms" }}
+          >
             <Rocket className="w-3.5 h-3.5" />
             Faculdade Antonio Meneghetti
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-foreground leading-tight mb-4 max-w-3xl mx-auto">
+          <h1
+            className="animate-rise text-4xl md:text-5xl font-bold text-foreground leading-tight mb-4 max-w-3xl mx-auto text-balance"
+            style={{ animationDelay: "200ms", animationDuration: "480ms" }}
+          >
             Transforme sua ideia em um projeto de{" "}
             <span className="text-primary">inovação</span>
           </h1>
-          <p className="text-lg text-muted max-w-2xl mx-auto mb-8">
+          <p
+            className="animate-rise text-lg text-muted max-w-2xl mx-auto mb-8 text-pretty"
+            style={{ animationDelay: "300ms", animationDuration: "480ms" }}
+          >
             O InfoHub acompanha a jornada do empreendedor desde a concepção da ideia
             até a apresentação no InovAMF, com mentoria, tarefas e relatórios integrados.
           </p>
-          <div className="flex items-center justify-center gap-4">
+          <div
+            className="animate-rise flex flex-col sm:flex-row items-center justify-center gap-4"
+            style={{ animationDelay: "400ms", animationDuration: "480ms" }}
+          >
             <a
               href="#login"
-              className="px-6 py-3 bg-primary text-white font-medium rounded-lg hover:bg-primary-dark transition-colors inline-flex items-center gap-2"
+              className="group px-6 py-3 bg-primary text-white font-medium rounded-lg transition-[background-color,box-shadow,transform] duration-150 hover:bg-primary-dark hover:shadow-[0_8px_16px_-8px_rgba(229,53,37,0.6)] active:scale-[0.98] inline-flex items-center gap-2"
             >
-              Acessar plataforma <ArrowRight className="w-4 h-4" />
+              Acessar plataforma
+              <ArrowRight className="w-4 h-4 transition-transform duration-150 group-hover:translate-x-0.5" />
             </a>
             <Link
               href="/cadastro"
-              className="px-6 py-3 border border-card-border text-foreground font-medium rounded-lg hover:bg-hover-bg transition-colors"
+              className="px-6 py-3 border border-card-border bg-card text-foreground font-medium rounded-lg transition-colors duration-150 hover:bg-hover-bg hover:border-input-border"
             >
               Enviar minha ideia
             </Link>
@@ -165,13 +184,14 @@ export default function LoginPage() {
             Uma plataforma completa para alunos, mentores e administradores gerenciarem o programa de inovação.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURES.map((f) => (
+            {FEATURES.map((f, index) => (
               <div
                 key={f.title}
-                className="bg-card border border-card-border rounded-xl p-6 hover:border-primary/30 transition-colors"
+                style={{ animationDelay: `${600 + index * 80}ms` }}
+                className="group animate-rise bg-card border border-card-border rounded-xl p-6 transition-[transform,box-shadow,border-color] duration-200 ease-enter hover:-translate-y-1 hover:border-primary/35 hover:shadow-[0_16px_32px_-16px_rgba(17,24,39,0.25)]"
               >
-                <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                  <f.icon className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 bg-primary/10 text-primary rounded-lg flex items-center justify-center mb-4 transition-colors duration-200 group-hover:bg-primary group-hover:text-white">
+                  <f.icon className="w-5 h-5" />
                 </div>
                 <h3 className="font-semibold text-foreground mb-2">{f.title}</h3>
                 <p className="text-sm text-muted">{f.desc}</p>
@@ -185,14 +205,39 @@ export default function LoginPage() {
       <section className="py-16 px-6 bg-card border-t border-card-border">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-foreground text-center mb-12">Como funciona</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {STEPS.map((step) => (
-              <div key={step.number} className="text-center">
-                <div className="text-3xl font-bold text-primary/20 mb-2">{step.number}</div>
-                <h3 className="font-semibold text-foreground mb-2">{step.title}</h3>
-                <p className="text-sm text-muted">{step.desc}</p>
-              </div>
-            ))}
+          <div className="relative">
+            {/* Linha que se desenha ligando os três passos (só no
+                desktop, onde eles ficam lado a lado). */}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 896 40"
+              className="pointer-events-none absolute left-0 top-0 hidden h-10 w-full md:block"
+              fill="none"
+              preserveAspectRatio="none"
+            >
+              <path
+                d="M150 20 H746"
+                stroke="var(--primary)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                className="[stroke-dashoffset:700] [stroke-dasharray:700] animate-[check-draw_1.4s_var(--motion-enter)_900ms_both]"
+                pathLength={700}
+              />
+            </svg>
+            <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8">
+              {STEPS.map((step, index) => (
+                <div key={step.number} className="text-center">
+                  <div
+                    style={{ animationDelay: `${900 + index * 600}ms` }}
+                    className="animate-pop mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-bold text-white ring-[6px] ring-card"
+                  >
+                    {step.number}
+                  </div>
+                  <h3 className="font-semibold text-foreground mb-2">{step.title}</h3>
+                  <p className="text-sm text-muted">{step.desc}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -205,7 +250,7 @@ export default function LoginPage() {
             <p className="text-sm text-muted">Entre com o e-mail e a senha da sua conta</p>
           </div>
 
-          <div className="bg-card rounded-2xl border border-card-border p-8 shadow-sm">
+          <div className="animate-rise bg-card rounded-2xl border border-card-border p-8 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">E-mail</label>
@@ -230,20 +275,26 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-light hover:text-foreground"
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    aria-pressed={showPassword}
+                    className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-hover-bg hover:text-foreground"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
 
+              {/* A mensagem entra com um tremor curto: chama o olho para o
+                  erro sem precisar de cor forte no campo inteiro. A `key`
+                  faz o tremor repetir quando o texto muda. */}
               {error && (
-                <p role="alert" className="text-sm text-danger">
+                <p key={error} role="alert" className="animate-shake flex items-start gap-1.5 text-sm text-danger">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   {error}
                 </p>
               )}
               {notice && (
-                <p role="status" className="text-sm text-success">
+                <p key={notice} role="status" className="animate-rise text-sm text-success">
                   {notice}
                 </p>
               )}
@@ -265,7 +316,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-primary text-white py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                className="w-full bg-primary text-white py-2.5 rounded-lg font-medium transition-[background-color,transform,box-shadow] duration-150 hover:bg-primary-dark hover:shadow-[0_8px_16px_-8px_rgba(229,53,37,0.6)] active:scale-[0.98] text-sm inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:hover:shadow-none"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 {submitting ? "Entrando..." : "Entrar"}

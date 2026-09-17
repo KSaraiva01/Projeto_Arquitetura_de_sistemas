@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/Header";
 import KanbanBoard from "@/components/KanbanBoard";
+import KpiCard from "@/components/KpiCard";
+import { DashboardSkeleton } from "@/components/Skeleton";
 import {
   AlertTriangle,
   CheckCircle,
@@ -11,6 +13,7 @@ import {
   Clock,
   Filter,
   Users,
+  X,
 } from "lucide-react";
 import { JOURNEY_STATUS_LABELS, type ApiBoard } from "@/lib/api-types";
 import { useRequireSession } from "@/lib/session";
@@ -73,10 +76,17 @@ export default function AdminDashboard() {
     [teams],
   );
 
+  const hasFilters = Boolean(search || filterCategory || filterStatus || filterMentor);
+
+  function clearFilters() {
+    setSearch("");
+    setFilterCategory("");
+    setFilterStatus("");
+    setFilterMentor("");
+  }
+
   if (loading || !user) {
-    return (
-      <div className="p-6 text-sm text-muted">Carregando...</div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -88,30 +98,45 @@ export default function AdminDashboard() {
       />
 
       <div className="p-6">
+        {/* Os dois cartões que correspondem a um filtro do quadro viram
+            botões: "Equipes" limpa tudo, "Prontas" filtra pelo status. Os
+            de tarefas ficam só informativos, porque o quadro não filtra
+            por tarefa. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <KpiCard
+            index={0}
             icon={<Users className="w-5 h-5 text-blue-500" />}
             label="Equipes"
             value={totals.teams}
             bg="bg-blue-500/10"
+            onClick={clearFilters}
           />
           <KpiCard
+            index={1}
             icon={<Clock className="w-5 h-5 text-amber-500" />}
             label="Tarefas em aberto"
             value={totals.openTasks}
             bg="bg-amber-500/10"
           />
           <KpiCard
+            index={2}
             icon={<AlertTriangle className="w-5 h-5 text-red-500" />}
             label="Tarefas atrasadas"
             value={totals.overdueTasks}
             bg="bg-red-500/10"
           />
           <KpiCard
+            index={3}
             icon={<CheckCircle className="w-5 h-5 text-green-500" />}
             label="Prontas para InovAMF"
             value={totals.ready}
             bg="bg-green-500/10"
+            onClick={() =>
+              setFilterStatus((current) =>
+                current === "READY_FOR_INOVAMF" ? "" : "READY_FOR_INOVAMF",
+              )
+            }
+            active={filterStatus === "READY_FOR_INOVAMF"}
           />
         </div>
 
@@ -159,25 +184,47 @@ export default function AdminDashboard() {
                 </option>
               ))}
             </select>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="animate-fade-in inline-flex items-center gap-1 rounded-full bg-primary-light px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+              >
+                Limpar filtros
+                <X className="h-3 w-3" />
+              </button>
+            )}
           </div>
 
-          <div className="flex bg-hover-bg rounded-lg p-0.5">
+          {/* Alternância com a pílula branca deslizando (200ms) entre as
+              duas opções, em vez de trocar de fundo de repente. */}
+          <div
+            role="tablist"
+            aria-label="Modo de visualização"
+            className="relative flex bg-hover-bg rounded-lg p-0.5"
+          >
+            <span
+              aria-hidden="true"
+              className={`absolute top-0.5 bottom-0.5 left-0.5 w-[calc(50%-2px)] rounded-md bg-card shadow-sm transition-transform duration-200 ease-enter ${
+                viewMode === "list" ? "translate-x-full" : ""
+              }`}
+            />
             <button
+              role="tab"
+              aria-selected={viewMode === "kanban"}
               onClick={() => setViewMode("kanban")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                viewMode === "kanban"
-                  ? "bg-card shadow-sm text-foreground"
-                  : "text-muted"
+              className={`relative w-[68px] py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "kanban" ? "text-foreground" : "text-muted"
               }`}
             >
               Kanban
             </button>
             <button
+              role="tab"
+              aria-selected={viewMode === "list"}
               onClick={() => setViewMode("list")}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                viewMode === "list"
-                  ? "bg-card shadow-sm text-foreground"
-                  : "text-muted"
+              className={`relative w-[68px] py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "list" ? "text-foreground" : "text-muted"
               }`}
             >
               Lista
@@ -192,11 +239,12 @@ export default function AdminDashboard() {
             detailBasePath="/admin/equipes"
             filters={filters}
             onBoardChange={setBoard}
+            onClearFilters={hasFilters ? clearFilters : undefined}
           />
         </div>
 
         {viewMode === "list" && (
-          <div className="bg-card rounded-xl border border-card-border overflow-hidden">
+          <div className="animate-rise bg-card rounded-xl border border-card-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -217,10 +265,11 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {teams.map((team) => (
+                  {teams.map((team, index) => (
                     <tr
                       key={team.id}
-                      className="border-b border-divider hover:bg-card-hover"
+                      style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
+                      className="animate-row-in border-b border-divider transition-colors hover:bg-card-hover"
                     >
                       <td className="px-4 py-3">
                         <p className="text-sm font-medium text-foreground">
@@ -264,30 +313,6 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  bg,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  bg: string;
-}) {
-  return (
-    <div className="bg-card rounded-xl border border-card-border p-4 flex items-center gap-4">
-      <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-foreground">{value}</p>
-        <p className="text-xs text-muted">{label}</p>
       </div>
     </div>
   );

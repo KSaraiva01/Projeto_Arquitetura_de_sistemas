@@ -5,7 +5,8 @@ import StagePipeline from "@/components/StagePipeline";
 import StatusBadge from "@/components/StatusBadge";
 import { mockTeams, getTasksByTeam } from "@/lib/mock-data";
 import { STAGE_NAMES, STAGE_DESCRIPTIONS, STAGE_DELIVERABLES, IDEA_STAGE_LABELS } from "@/lib/types";
-import { Calendar, FileText, Users, Lightbulb, Clock, CheckCircle } from "lucide-react";
+import DueChip from "@/components/DueChip";
+import { FileText, Users, Lightbulb, Clock, CheckCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function AlunoDashboard() {
@@ -14,22 +15,34 @@ export default function AlunoDashboard() {
   const pendingTasks = tasks.filter((t) => t.status === "pendente" || t.status === "em_andamento" || t.status === "atrasada");
   const completedTasks = tasks.filter((t) => t.status === "aprovada");
 
+  // O prazo mais próximo entre as pendentes vai para o cartão da etapa —
+  // é a primeira coisa que a equipe precisa saber ao abrir a página.
+  const nextDue = [...pendingTasks].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+
   return (
     <div>
       <Header title="Minha Jornada" userName={team.leader.name} subtitle={`Equipe ${team.ideaName}`} />
 
       <div className="p-6">
-        <div className="bg-card rounded-xl border border-card-border p-6 mb-6">
-          <h2 className="text-base font-semibold text-foreground mb-4">Progresso da jornada</h2>
-          <StagePipeline currentStage={team.currentStage} />
-          <div className="mt-4 bg-highlight-bg rounded-lg p-4">
-            <p className="text-sm font-semibold text-primary mb-1">
-              Etapa {team.currentStage} — {STAGE_NAMES[team.currentStage]}
-            </p>
-            <p className="text-sm text-muted">{STAGE_DESCRIPTIONS[team.currentStage]}</p>
-            <p className="text-xs text-muted-light mt-2">
-              Entregável esperado: {STAGE_DELIVERABLES[team.currentStage]}
-            </p>
+        <div className="animate-rise bg-card rounded-xl border border-card-border p-6 mb-6">
+          <h2 className="text-base font-semibold text-foreground mb-5">Progresso da jornada</h2>
+          <StagePipeline currentStage={team.currentStage} showProgress />
+          <div className="mt-4 bg-highlight-bg rounded-lg p-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-primary mb-1">
+                Etapa {team.currentStage} — {STAGE_NAMES[team.currentStage]}
+              </p>
+              <p className="text-sm text-muted">{STAGE_DESCRIPTIONS[team.currentStage]}</p>
+              <p className="text-xs text-muted-light mt-2">
+                Entregável esperado: {STAGE_DELIVERABLES[team.currentStage]}
+              </p>
+            </div>
+            {nextDue && (
+              <div className="shrink-0 sm:text-right">
+                <p className="text-xs text-muted-light mb-1">Próximo prazo</p>
+                <DueChip dueDate={nextDue.dueDate} />
+              </div>
+            )}
           </div>
         </div>
 
@@ -52,9 +65,13 @@ export default function AlunoDashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {pendingTasks.map((task) => (
-                    <div key={task.id} className="border border-card-border rounded-lg p-4 hover:bg-card-hover transition-colors">
-                      <div className="flex items-start justify-between">
+                  {pendingTasks.map((task, index) => (
+                    <div
+                      key={task.id}
+                      style={{ animationDelay: `${120 + index * 60}ms` }}
+                      className="animate-rise border border-card-border rounded-lg p-4 transition-[border-color,box-shadow] duration-150 hover:border-primary/30 hover:shadow-[0_6px_16px_-8px_rgba(17,24,39,0.2)]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
                         <div>
                           <h4 className="text-sm font-medium text-foreground">{task.title}</h4>
                           <p className="text-xs text-muted mt-0.5">{task.description}</p>
@@ -62,9 +79,7 @@ export default function AlunoDashboard() {
                         <StatusBadge status={task.status} />
                       </div>
                       <div className="flex items-center gap-4 mt-3">
-                        <span className="flex items-center gap-1 text-xs text-muted-light">
-                          <Calendar className="w-3 h-3" /> Prazo: {task.dueDate}
-                        </span>
+                        <DueChip dueDate={task.dueDate} />
                       </div>
                       <div className="mt-3">
                         <Link

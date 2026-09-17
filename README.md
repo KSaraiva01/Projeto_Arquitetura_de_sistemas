@@ -22,7 +22,10 @@ O sistema digitaliza o fluxo que hoje é feito manualmente (WhatsApp e planilhas
 5. Modelo de negócio (Business Model Canvas)
 6. Pitch e inscrição (Pitch Vídeo, Canvas final, VPD final, dados dos integrantes)
 
-Ao concluir a Etapa 6 com todos os entregáveis aprovados, a equipe é marcada como **Pronta para o InovAMF**.
+Cada equipe recebe uma cópia dessa jornada, e o mentor pode **acrescentar etapas
+extras** só para ela. Ao chegar à última etapa da sua jornada com todos os
+entregáveis obrigatórios aprovados, a equipe é marcada como **Pronta para o
+InovAMF** e então encaminhada.
 
 ## Stack
 
@@ -34,10 +37,15 @@ Ao concluir a Etapa 6 com todos os entregáveis aprovados, a equipe é marcada c
 
 **Backend** (`infohub-backend/`)
 - Node.js 20+ com TypeScript e Express 5
-- PostgreSQL acessado com `pg` — SQL puro, sem ORM
+- PostgreSQL 13+ acessado com `pg` — SQL puro, sem ORM
 - Zod para validação, JWT + refresh token para autenticação
 
-Detalhes da API, do schema e dos endpoints: [`infohub-backend/README.md`](infohub-backend/README.md).
+**Banco** (`database/`, na raiz do repositório do projeto)
+- `schema.sql`: tabelas em português, relacionamentos, índices e dados iniciais
+- `seed_demo.sql`: cenário de demonstração (só desenvolvimento)
+- `README.md`: modelo de dados e as respostas às perguntas de banco × requisitos
+
+Detalhes da API e dos endpoints: [`infohub-backend/README.md`](infohub-backend/README.md).
 
 ## Estrutura
 
@@ -63,17 +71,18 @@ infohub-frontend/
 
 ## Como rodar localmente
 
-São dois processos. Comece pelo backend, porque o frontend já consulta a API.
+Pré-requisitos: Node.js 20+ e PostgreSQL 13+ rodando. São dois processos;
+comece pelo backend, porque o frontend consulta a API.
 
-**1. Backend** (precisa de um PostgreSQL rodando):
+**1. Backend**
 
 ```bash
 cd infohub-backend
 npm install
-cp .env.example .env    # preencha a senha do seu PostgreSQL
-npm run db:setup        # cria o banco, aplica as migrations e popula
+cp .env.example .env    # preencha a senha do PostgreSQL e gere um JWT_SECRET
+npm run db:setup        # cria o banco (se faltar) e aplica database/schema.sql
 npm run db:seed:demo    # opcional: 6 equipes de exemplo, com tarefas e prazos
-npm run dev
+npm run dev             # http://localhost:3333/api
 ```
 
 **2. Frontend**, em outro terminal:
@@ -81,44 +90,55 @@ npm run dev
 ```bash
 cd infohub-frontend
 npm install
-npm run dev
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://localhost:3333/api
+npm run dev                  # http://localhost:3000
 ```
 
-Acesse [http://localhost:3000](http://localhost:3000) e entre com
-`admin@amf.edu.br` / `InfoHub@2026`.
+Entre com `admin@amf.edu.br` / `InfoHub@2026` (troque no primeiro acesso).
 
 Com o seed de demonstração aplicado, também funcionam
 `ana.ramos@amf.edu.br` e `ricardo.ferreira@amf.edu.br` (mentores, cada um com
 suas equipes) e `lucas.oliveira@aluno.amf.edu.br` (aluno líder) — todos com a
 mesma senha.
 
+## Deploy no servidor da faculdade
+
+1. A infra cria um banco PostgreSQL vazio e informa host, porta, usuário,
+   senha e nome do banco.
+2. Aplique o schema uma única vez:
+   `psql -h <host> -U <usuario> -d <banco> -f database/schema.sql`
+   (ou configure o `.env` do backend e rode `npm run db:setup`).
+3. Backend: `.env` com `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET`
+   forte, `CORS_ORIGINS` e `APP_URL` apontando para o endereço do front,
+   `MAIL_DRIVER=resend` + `RESEND_API_KEY`. Depois `npm run build && npm start`.
+4. Frontend: `.env.local` com `NEXT_PUBLIC_API_URL=https://<api>/api`, depois
+   `npm run build && npm start`.
+
+O `seed_demo.sql` **não** deve ser aplicado em produção (ele apaga as equipes).
+
 ## Status atual
 
-O projeto está em migração do protótipo para o sistema de verdade. Hoje
-convivem duas metades:
-
 **Ligado à API e persistindo no PostgreSQL:**
-- Login, sessão e recuperação de senha (RF-01). O perfil vem da API — não há
-  mais seletor de perfil na tela de login.
-- Gestão de contas de administrador e mentor (RF-03).
+- Login, sessão, primeiro acesso por link e recuperação de senha (RF-01, RF-02).
+- Gestão de contas de administrador e mentor (RF-03); atribuição de mentores.
 - Kanban do funil com **arrastar e soltar** para administrador e mentor
   (RF-06, RF-09), respeitando a RN-01: avançar com tarefa obrigatória
   pendente pede confirmação e registra o motivo.
 - **Calendário** de prazos e lembretes, com escopo por perfil.
 - Escopo de acesso (RNF-03): mentor vê apenas as equipes que acompanha.
 
-**Ainda sobre `src/lib/mock-data.ts`:**
-- Páginas de Equipes, Tarefas e Relatórios do administrador
-- Área do aluno e do integrante (Minha Jornada, Minhas Tarefas)
-- Formulário de cadastro da ideia
+**Pronto na API, ainda em mock no front:**
+- Cadastro da ideia (`POST /teams/register`) — o formulário atual ainda tem
+  campo de senha; na API a senha é definida pelo link de primeiro acesso.
+- Criar/editar tarefa, entregar (versionado), aprovar/solicitar ajustes
+  (RF-11 a RF-16), anotações do mentor (RF-10), etapas extras, exclusão
+  lógica de equipe e exclusão de conta (LGPD).
+- Lembretes e avisos de atraso por e-mail (RF-17 a RF-20), disparados pela
+  rotina agendada do backend.
 
 **Ainda não implementado:**
-- Cadastro da ideia criando equipe e conta de verdade (RF-02, RF-04, RF-05)
-- Criar tarefa e avaliar entrega (RF-11, RF-12, RF-15)
-- Upload e armazenamento de arquivos (RF-14, RF-16, RNF-04)
-- Disparo automático dos e-mails (RF-18 a RF-20) — a fila e os lembretes já
-  existem no banco, falta a rotina agendada
-- Exportação de relatórios em CSV/Excel (RF-23)
+- Upload físico de arquivos (RNF-04) — a entrega `FILE` recebe a URL já armazenada.
+- Relatórios consolidados e exportação CSV/Excel (RF-22 a RF-24).
 
 ## Scripts
 

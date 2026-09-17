@@ -1,7 +1,8 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import { Menu } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import { useShell } from "./AppShell";
 
 interface HeaderProps {
   title: string;
@@ -9,32 +10,39 @@ interface HeaderProps {
   subtitle?: string;
 }
 
+/**
+ * Cabeçalho das páginas logadas.
+ *
+ * A busca e o sino que ficavam aqui não faziam nada — eram só uma promessa
+ * na tela. Saem até existir o que buscar e o que notificar; quando houver,
+ * voltam ligados a dados de verdade.
+ */
 export default function Header({ title, userName, subtitle }: HeaderProps) {
+  const { openDrawer } = useShell();
+
   return (
-    <header className="bg-card border-b border-card-border px-6 py-4 flex items-center justify-between">
-      <div>
-        <h1 className="text-xl font-bold text-foreground">{title}</h1>
-        {subtitle && <p className="text-sm text-muted mt-0.5">{subtitle}</p>}
-      </div>
-      <div className="flex items-center gap-2">
-        <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-light" />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="pl-9 pr-4 py-2 bg-input-bg border border-input-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary text-foreground w-64"
-          />
-        </div>
-        <ThemeToggle />
-        <button className="relative p-2 text-muted hover:text-foreground hover:bg-hover-bg rounded-lg transition-colors">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger rounded-full" />
+    <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-card-border bg-card/90 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={openDrawer}
+          aria-label="Abrir menu"
+          className="-ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-hover-bg md:hidden"
+        >
+          <Menu className="h-6 w-6" />
         </button>
-        <div className="flex items-center gap-3 pl-3 border-l border-divider">
-          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white text-sm font-medium">
+        <div className="min-w-0">
+          <h1 className="truncate text-lg font-bold text-foreground md:text-xl">{title}</h1>
+          {subtitle && <p className="mt-0.5 truncate text-xs text-muted md:text-sm">{subtitle}</p>}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <ThemeToggle />
+        <div className="flex items-center gap-3 border-l border-divider pl-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-white">
             {userName.charAt(0)}
           </div>
-          <span className="text-sm font-medium text-foreground hidden sm:block">{userName}</span>
+          <span className="hidden text-sm font-medium text-foreground sm:block">{userName}</span>
         </div>
       </div>
     </header>

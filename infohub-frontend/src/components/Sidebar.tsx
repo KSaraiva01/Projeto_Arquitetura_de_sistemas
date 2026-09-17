@@ -9,10 +9,15 @@ import {
   LayoutDashboard,
   Lightbulb,
   LogOut,
+  PanelLeftClose,
   Users,
+  X,
 } from "lucide-react";
-import InfoHubLogo from "./InfoHubLogo";
+import InfoHubLogo, { LogoIcon } from "./InfoHubLogo";
+import { useShell } from "./AppShell";
 import { useSession } from "@/lib/session";
+
+export type SidebarRole = "admin" | "aluno" | "mentor" | "integrante";
 
 const adminLinks = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -48,14 +53,17 @@ const roleLabels = {
   integrante: "Integrante de equipe",
 };
 
-export default function Sidebar({
-  role,
-}: {
-  role: "admin" | "aluno" | "mentor" | "integrante";
-}) {
+const ROOTS = ["/admin", "/aluno", "/mentor", "/integrante"];
+
+/**
+ * Menu lateral. No desktop é fixo e recolhe para uma régua de ícones; no
+ * celular é a gaveta que o AppShell abre e fecha.
+ */
+export default function Sidebar({ role }: { role: SidebarRole }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useSession();
+  const { collapsed, toggleCollapsed, drawerOpen, closeDrawer } = useShell();
 
   const links =
     role === "admin"
@@ -71,55 +79,119 @@ export default function Sidebar({
     router.replace("/");
   }
 
-  return (
-    <aside className="w-64 bg-sidebar-bg text-sidebar-text flex flex-col min-h-screen fixed left-0 top-0 z-30">
-      <div className="p-5 border-b border-sidebar-border">
-        <InfoHubLogo size="sm" variant="light" />
-      </div>
+  // Os rótulos somem com opacidade (150ms) enquanto a largura anima (200ms);
+  // no celular a sidebar nunca recolhe, só desliza.
+  const labelClass = `whitespace-nowrap transition-opacity duration-150 ${
+    collapsed ? "md:opacity-0 md:w-0 md:overflow-hidden" : "opacity-100"
+  }`;
 
-      <div className="px-5 py-3">
-        <span className="text-[10px] uppercase tracking-widest font-semibold text-muted-light">
-          {roleLabels[role]}
-        </span>
-        {user && (
-          <p className="text-sm text-sidebar-text mt-0.5 truncate">{user.name}</p>
+  return (
+    <aside
+      aria-label="Menu principal"
+      className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col bg-sidebar-bg text-sidebar-text shadow-2xl transition-[transform,width] duration-200 ease-enter md:translate-x-0 md:shadow-none ${
+        drawerOpen ? "translate-x-0" : "-translate-x-full"
+      } ${collapsed ? "md:w-[72px]" : "md:w-64"}`}
+    >
+      <div
+        className={`flex items-center border-b border-sidebar-border ${
+          collapsed ? "md:justify-center md:px-0" : ""
+        } justify-between p-5`}
+      >
+        {collapsed ? (
+          <>
+            <span className="md:hidden">
+              <InfoHubLogo size="sm" variant="light" />
+            </span>
+            <LogoIcon className="hidden h-10 w-8 md:block" />
+          </>
+        ) : (
+          <InfoHubLogo size="sm" variant="light" />
+        )}
+
+        <button
+          type="button"
+          onClick={closeDrawer}
+          aria-label="Fechar menu"
+          className="-mr-2 flex h-11 w-11 items-center justify-center rounded-lg text-muted-light transition-colors hover:bg-sidebar-hover hover:text-white md:hidden"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        {!collapsed && (
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label="Recolher menu"
+            title="Recolher menu"
+            className="hidden h-8 w-8 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-sidebar-hover hover:text-white md:flex"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
         )}
       </div>
 
-      <nav className="flex-1 px-3">
+      {collapsed && (
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Expandir menu"
+          title="Expandir menu"
+          className="mx-auto mt-3 hidden h-8 w-8 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-sidebar-hover hover:text-white md:flex"
+        >
+          <PanelLeftClose className="h-4 w-4 rotate-180" />
+        </button>
+      )}
+
+      <div
+        className={`px-5 py-3 transition-opacity duration-150 ${
+          collapsed ? "md:pointer-events-none md:h-0 md:overflow-hidden md:py-0 md:opacity-0" : ""
+        }`}
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-light">
+          {roleLabels[role]}
+        </span>
+        {user && (
+          <p className="mt-0.5 truncate text-sm text-sidebar-text">{user.name}</p>
+        )}
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-0.5 px-3">
         {links.map((link) => {
           const isActive =
             pathname === link.href ||
-            (link.href !== "/admin" &&
-              link.href !== "/aluno" &&
-              link.href !== "/mentor" &&
-              link.href !== "/integrante" &&
-              pathname.startsWith(link.href));
+            (!ROOTS.includes(link.href) && pathname.startsWith(link.href));
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg mb-0.5 transition-colors ${
+              title={collapsed ? link.label : undefined}
+              aria-current={isActive ? "page" : undefined}
+              className={`flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                collapsed ? "md:justify-center md:px-0" : ""
+              } ${
                 isActive
-                  ? "bg-sidebar-active-bg text-sidebar-active-text font-medium"
+                  ? "bg-sidebar-active-bg font-medium text-sidebar-active-text"
                   : "text-sidebar-text hover:bg-sidebar-hover"
               }`}
             >
-              <link.icon className="w-5 h-5" />
-              {link.label}
+              <link.icon className="h-5 w-5 shrink-0" />
+              <span className={labelClass}>{link.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-3 border-t border-sidebar-border">
+      <div className="border-t border-sidebar-border p-3">
         <button
           type="button"
           onClick={() => void handleSignOut()}
-          className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-muted-light hover:text-white rounded-lg hover:bg-sidebar-hover transition-colors"
+          title={collapsed ? "Sair" : undefined}
+          className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-light transition-colors hover:bg-sidebar-hover hover:text-white ${
+            collapsed ? "md:justify-center md:px-0" : ""
+          }`}
         >
-          <LogOut className="w-5 h-5" />
-          Sair
+          <LogOut className="h-5 w-5 shrink-0" />
+          <span className={labelClass}>Sair</span>
         </button>
       </div>
     </aside>

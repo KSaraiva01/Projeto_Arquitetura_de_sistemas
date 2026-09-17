@@ -35,7 +35,14 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
   function toggleTheme() {
     const next = theme === "light" ? "dark" : "light";
     setTheme(next);
-    document.documentElement.classList.toggle("dark", next === "dark");
+
+    // As cores cruzam em 200ms em vez de piscar. A classe entra só durante
+    // a troca para não deixar uma transição global ligada o tempo todo.
+    const root = document.documentElement;
+    root.classList.add("theme-transition");
+    root.classList.toggle("dark", next === "dark");
+    window.setTimeout(() => root.classList.remove("theme-transition"), 250);
+
     localStorage.setItem("infohub-theme", next);
   }
 

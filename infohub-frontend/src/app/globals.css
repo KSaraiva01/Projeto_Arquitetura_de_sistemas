@@ -40,6 +40,12 @@
   --logo-hub: #E53525;
 
   --scrollbar-thumb: #d1d5db;
+
+  /* Curvas de movimento: entradas desaceleram, saídas aceleram. Vivem
+     fora do @theme para o CSS comum e o @theme inline enxergarem a mesma
+     variável em runtime. */
+  --motion-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
 .dark {
@@ -121,6 +127,25 @@
   --color-logo-hub: var(--logo-hub);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Movimento: quatro durações (150/200/300/500+), duas curvas; só
+     transform/opacity animam layout. `ease-enter` e `ease-exit` viram
+     utilities; `animate-*` idem. */
+  --ease-enter: var(--motion-enter);
+  --ease-exit: var(--motion-exit);
+
+  --animate-rise: rise 300ms var(--motion-enter) both;
+  --animate-fade-in: fade-in 200ms ease both;
+  --animate-toast-in: toast-in 300ms var(--motion-enter) both;
+  --animate-toast-out: toast-out 200ms var(--motion-exit) forwards;
+  --animate-dialog-in: dialog-in 300ms var(--motion-enter) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-pulse-ring: pulse-ring 2s ease-out infinite;
+  --animate-pop: pop 360ms var(--motion-enter) both;
+  --animate-fill-x: fill-x 420ms var(--motion-enter) both;
+  --animate-shake: shake 300ms ease-in-out;
+  --animate-drop-pulse: drop-pulse 1.2s ease-in-out infinite;
+  --animate-row-in: row-in 300ms var(--motion-enter) both;
 }
 
 body {
@@ -132,4 +157,101 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Keyframes ficam fora do @theme para existirem mesmo quando só o CSS
+   comum (skeleton, toast) os usa, sem depender de uma utility. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+}
+@keyframes shimmer {
+  from { background-position: -600px 0; }
+  to { background-position: 600px 0; }
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fill-x {
+  from { transform: scaleX(0); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+@keyframes drop-pulse {
+  0%, 100% { border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+  50% { border-color: var(--primary); }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-8px); }
+}
+
+/* Foco de teclado sempre visível, no mesmo anel em todo o app. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Placeholder de carregamento com brilho que corre. */
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--badge-muted-bg) 0%, var(--hover-bg) 40%, var(--badge-muted-bg) 80%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* A troca de tema cruza as cores em vez de piscar. A classe é colocada
+   só durante o toggle para não deixar transição global permanente. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease !important;
+}
+
+/* Barra de tempo do toast: encolhe de 1 para 0 enquanto ele está na tela. */
+@keyframes toast-bar {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* O check do pipeline se desenha ao concluir uma etapa. */
+.check-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-draw 300ms ease-out both;
+}
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

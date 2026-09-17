@@ -3,9 +3,11 @@
 import { useState } from "react";
 import Header from "@/components/Header";
 import StatusBadge from "@/components/StatusBadge";
+import DueChip from "@/components/DueChip";
+import UploadDropzone from "@/components/UploadDropzone";
 import { mockTeams, getTasksByTeam } from "@/lib/mock-data";
 import { STAGE_NAMES } from "@/lib/types";
-import { Calendar, Upload, FileText, CheckCircle, Clock, X } from "lucide-react";
+import { Upload, FileText, CheckCircle, Clock } from "lucide-react";
 
 export default function AlunoTarefasPage() {
   const team = mockTeams[0];
@@ -32,7 +34,7 @@ export default function AlunoTarefasPage() {
 
       <div className="p-6">
         {uploadSuccess && (
-          <div className="bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400 rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
+          <div role="status" className="animate-rise bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400 rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
             <CheckCircle className="w-4 h-4" />
             <p className="text-sm">Arquivo enviado com sucesso!</p>
           </div>
@@ -44,15 +46,19 @@ export default function AlunoTarefasPage() {
             Pendentes ({pending.length})
           </h2>
           {pending.length === 0 ? (
-            <div className="bg-card rounded-xl border border-card-border p-8 text-center">
+            <div className="animate-rise bg-card rounded-xl border border-card-border p-8 text-center">
               <CheckCircle className="w-10 h-10 text-success mx-auto mb-2" />
               <p className="text-muted">Nenhuma tarefa pendente!</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {pending.map((task) => (
-                <div key={task.id} className="bg-card rounded-xl border border-card-border p-5">
-                  <div className="flex items-start justify-between mb-2">
+              {pending.map((task, index) => (
+                <div
+                  key={task.id}
+                  style={{ animationDelay: `${index * 60}ms` }}
+                  className="animate-rise bg-card rounded-xl border border-card-border p-5 transition-[border-color,box-shadow] duration-150 hover:border-primary/30 hover:shadow-[0_6px_16px_-8px_rgba(17,24,39,0.2)]"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
                     <div>
                       <h3 className="text-base font-medium text-foreground">{task.title}</h3>
                       <p className="text-sm text-muted mt-0.5">{task.description}</p>
@@ -60,8 +66,8 @@ export default function AlunoTarefasPage() {
                     <StatusBadge status={task.status} />
                   </div>
 
-                  <div className="flex items-center gap-4 text-xs text-muted-light mb-4">
-                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> Prazo: {task.dueDate}</span>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-light mb-4">
+                    <DueChip dueDate={task.dueDate} />
                     <span>Etapa {task.stage} — {STAGE_NAMES[task.stage]}</span>
                   </div>
 
@@ -87,46 +93,16 @@ export default function AlunoTarefasPage() {
                   )}
 
                   {uploadingTaskId === task.id ? (
-                    <div className="border-2 border-dashed border-primary/30 rounded-lg p-4 bg-highlight-bg">
-                      <div className="flex items-center justify-between mb-3">
-                        <p className="text-sm font-medium text-foreground">Enviar entrega</p>
-                        <button onClick={() => { setUploadingTaskId(null); setSelectedFiles([]); }} className="text-muted-light hover:text-foreground">
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <label className="block cursor-pointer">
-                        <div className="flex flex-col items-center gap-2 py-4">
-                          <Upload className="w-8 h-8 text-muted-light" />
-                          <p className="text-sm text-muted">Clique para selecionar arquivos</p>
-                          <p className="text-xs text-muted-light">PDF, imagens ou vídeos (máx. 100MB)</p>
-                        </div>
-                        <input
-                          type="file"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => setSelectedFiles(Array.from(e.target.files ?? []))}
-                        />
-                      </label>
-                      {selectedFiles.length > 0 && (
-                        <div className="mt-3 space-y-1">
-                          {selectedFiles.map((f, i) => (
-                            <p key={i} className="text-sm text-muted flex items-center gap-1">
-                              <FileText className="w-3 h-3" /> {f.name}
-                            </p>
-                          ))}
-                          <button
-                            onClick={() => handleUpload(task.id)}
-                            className="mt-2 px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark"
-                          >
-                            Enviar
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <UploadDropzone
+                      files={selectedFiles}
+                      onFilesChange={setSelectedFiles}
+                      onSubmit={() => handleUpload(task.id)}
+                      onCancel={() => { setUploadingTaskId(null); setSelectedFiles([]); }}
+                    />
                   ) : (
                     <button
                       onClick={() => setUploadingTaskId(task.id)}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm rounded-lg hover:bg-primary-dark"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm rounded-lg transition-[background-color,transform] duration-150 hover:bg-primary-dark active:scale-[0.98]"
                     >
                       <Upload className="w-4 h-4" /> Enviar entrega
                     </button>
@@ -143,19 +119,24 @@ export default function AlunoTarefasPage() {
               <CheckCircle className="w-5 h-5 text-success" />
               Concluídas ({completed.length})
             </h2>
-            <div className="bg-card rounded-xl border border-card-border overflow-hidden">
-              {completed.map((task) => (
-                <div key={task.id} className="flex items-center justify-between px-5 py-4 border-b border-divider last:border-0">
-                  <div>
+            <div className="animate-rise bg-card rounded-xl border border-card-border overflow-hidden" style={{ animationDelay: "120ms" }}>
+              {completed.map((task, index) => (
+                <div
+                  key={task.id}
+                  style={{ animationDelay: `${160 + index * 40}ms` }}
+                  className="animate-row-in flex flex-col gap-2 px-5 py-4 border-b border-divider last:border-0 transition-colors hover:bg-card-hover sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{task.title}</p>
                     <p className="text-xs text-muted-light">
                       Etapa {task.stage} — Entregue em {task.files[0]?.uploadedAt ?? task.dueDate}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     {task.files.length > 0 && (
-                      <span className="text-xs text-muted-light flex items-center gap-1">
-                        <FileText className="w-3 h-3" /> {task.files[0].name}
+                      <span className="flex min-w-0 items-center gap-1 text-xs text-muted-light">
+                        <FileText className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{task.files[0].name}</span>
                       </span>
                     )}
                     <StatusBadge status={task.status} />
