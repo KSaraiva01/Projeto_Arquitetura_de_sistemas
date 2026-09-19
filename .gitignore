@@ -1,0 +1,22 @@
+# dependências e build
+node_modules/
+dist/
+frontend/.next/
+frontend/out/
+
+# Prisma Client gerado (recriado no build com `prisma generate`)
+backend/src/generated/
+
+# segredos
+.env
+.env.*
+!.env.example
+
+# arquivos enviados pelos alunos (volume persistente no Coolify)
+uploads/
+
+# diversos
+*.log
+.DS_Store
+Thumbs.db
+tsconfig.tsbuildinfo

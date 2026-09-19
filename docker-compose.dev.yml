@@ -1,0 +1,20 @@
+# Postgres local para desenvolvimento (opcional).
+# Suba com:  docker compose -f docker-compose.dev.yml up -d
+# e aponte o .env para: postgresql://infohub:infohub@localhost:5432/infohub
+#
+# O nome "docker-compose.dev.yml" é proposital: o deploy no Coolify usa o
+# Dockerfile, e um docker-compose.yml na raiz poderia ser confundido com ele.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: infohub
+      POSTGRES_PASSWORD: infohub
+      POSTGRES_DB: infohub
+    ports:
+      - "5432:5432"
+    volumes:
+      - infohub_pgdata:/var/lib/postgresql/data
+
+volumes:
+  infohub_pgdata:

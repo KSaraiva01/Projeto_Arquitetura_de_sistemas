@@ -1,0 +1,643 @@
+// =============================================================================
+// InfoHub → InovAMF – Modelo de dados
+// =============================================================================
+// Convenções
+//   • Nomes de tabelas e colunas em português, snake_case (ver @@map / @map).
+//   • Nos models os campos ficam em camelCase (padrão do Prisma Client em TS).
+//   • Todo id é UUID v7 (ordenável por tempo → índices mais eficientes).
+//   • Datas em TIMESTAMPTZ para não haver ambiguidade de fuso ao consultar o
+//     banco diretamente (pgAdmin, relatórios).
+//   • Exclusões são LÓGICAS onde o requisito pede (equipes: Q4; usuários:
+//     RNF-02 – anonimização). O restante usa FK com Cascade/SetNull conforme
+//     comentado em cada relação.
+//   • Regras que dependem de estado (RN-01, RN-03, "um líder por equipe",
+//     limites de arquivo) são aplicadas na camada de serviço; o banco garante
+//     o estrutural (PK, FK, UNIQUE, NOT NULL, enums).
+// =============================================================================
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../backend/src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+
+/// Perfil de acesso (RF-01). Líder e integrante são ambos ALUNO: o líder é o
+/// usuário apontado por `equipes.lider_id`.
+enum Perfil {
+  ADMIN
+  MENTOR
+  ALUNO
+
+  @@map("perfil")
+}
+
+/// "Estágio atual da ideia" do formulário inicial (RF-04).
+enum EstagioIdeia {
+  APENAS_IDEIA
+  PROTOTIPO
+  MVP_EM_DESENVOLVIMENTO
+  MVP_PRONTO
+
+  @@map("estagio_ideia")
+}
+
+/// Situação da equipe no funil. Após a última etapa a equipe fica
+/// PRONTA_INOVAMF e, quando a coordenação encaminha, ENCAMINHADA.
+enum StatusJornada {
+  EM_ANDAMENTO
+  PRONTA_INOVAMF
+  ENCAMINHADA
+
+  @@map("status_jornada")
+}
+
+/// Status de tarefa (RF-12). ATRASADA é aplicado pelo job (RN-04).
+enum StatusTarefa {
+  PENDENTE
+  EM_ANDAMENTO
+  ENTREGUE
+  ATRASADA
+  APROVADA
+  REPROVADA
+
+  @@map("status_tarefa")
+}
+
+/// Decisão do mentor/admin sobre uma entrega (RF-15).
+enum DecisaoAvaliacao {
+  APROVADA
+  REPROVADA
+
+  @@map("decisao_avaliacao")
+}
+
+/// Sentido de uma mudança de etapa (RF-09).
+enum DirecaoMudancaEtapa {
+  INICIO
+  AVANCO
+  RETROCESSO
+
+  @@map("direcao_mudanca_etapa")
+}
+
+/// Uma entrega pode ser arquivo enviado ou link externo (Q3: pitch em vídeo
+/// pode vir como upload ou como link do YouTube/Drive).
+enum TipoAnexo {
+  ARQUIVO
+  LINK
+
+  @@map("tipo_anexo")
+}
+
+/// Tokens de uso único enviados por e-mail (RF-01 recuperação de senha e
+/// RF-02 primeiro acesso dos integrantes cadastrados pelo líder).
+enum TipoToken {
+  ATIVACAO_CONTA
+  RECUPERACAO_SENHA
+
+  @@map("tipo_token")
+}
+
+/// Todos os e-mails que o sistema envia (RF-18, RF-19, RF-20, RF-01, RF-02).
+enum TipoNotificacao {
+  NOVO_CADASTRO // → admin: aluno enviou a ideia (RF-05/RF-19)
+  NOVA_TAREFA // → aluno (RF-18)
+  PRAZO_PROXIMO // → aluno: lembrete configurado na tarefa (RF-17/RF-18)
+  PRAZO_VENCIDO // → aluno: prazo passou sem entrega (RF-18)
+  TAREFA_ATRASADA // → admin/mentor (RF-19)
+  ENTREGA_RECEBIDA // → admin/mentor (RF-19)
+  ENTREGA_AVALIADA // → aluno: aprovada ou reprovada (RF-18)
+  LEMBRETE_MANUAL // → equipe: disparado pelo admin (RF-20)
+  ATIVACAO_CONTA // → integrante: token de primeiro acesso (RF-02)
+  RECUPERACAO_SENHA // → usuário: token de redefinição (RF-01)
+
+  @@map("tipo_notificacao")
+}
+
+/// Ciclo de vida de um e-mail na fila (RNF-06: reenvio em caso de falha).
+enum StatusNotificacao {
+  PENDENTE
+  ENVIADA
+  FALHOU
+
+  @@map("status_notificacao")
+}
+
+// -----------------------------------------------------------------------------
+// Cadastros de apoio
+// -----------------------------------------------------------------------------
+
+/// Cursos da faculdade. Tabela (e não enum) para o admin poder incluir
+/// cursos sem migration e para a futura integração com o sistema acadêmico.
+model Curso {
+  id       String   @id @default(uuid(7)) @db.Uuid
+  nome     String   @unique @db.VarChar(120)
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  usuarios Usuario[]
+
+  @@map("cursos")
+}
+
+/// Área/setor da ideia (RF-04, filtro do RF-07).
+model AreaIdeia {
+  id       String   @id @default(uuid(7)) @db.Uuid
+  nome     String   @unique @db.VarChar(120)
+  ativo    Boolean  @default(true)
+  criadoEm DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  equipes Equipe[]
+
+  @@map("areas_ideia")
+}
+
+// -----------------------------------------------------------------------------
+// Usuários, autenticação e sessão
+// -----------------------------------------------------------------------------
+
+/// Uma linha por pessoa, qualquer que seja o perfil (RF-01, RF-02, RF-03).
+model Usuario {
+  id        String  @id @default(uuid(7)) @db.Uuid
+  nome      String  @db.VarChar(160)
+  email     String  @unique @db.VarChar(160)
+  /// NULL enquanto o integrante ainda não definiu a senha pelo token de
+  /// ativação (RF-02). Login só é permitido com hash presente.
+  senhaHash String? @map("senha_hash") @db.VarChar(255)
+  perfil    Perfil
+  telefone  String? @db.VarChar(30)
+  cursoId   String? @map("curso_id") @db.Uuid
+  /// Semestre/período do aluno (1–10). Nulo para admin/mentor.
+  semestre  Int?    @db.SmallInt
+  /// RF-03: admin pode desativar contas sem apagá-las.
+  ativo     Boolean @default(true)
+
+  /// RNF-02 (LGPD): quando o usuário aceitou o tratamento de dados.
+  consentimentoLgpdEm DateTime? @map("consentimento_lgpd_em") @db.Timestamptz(6)
+  /// RNF-02 (LGPD): pedido de exclusão atendido. A linha é mantida com os
+  /// dados pessoais anonimizados para preservar histórico e FKs.
+  excluidoEm          DateTime? @map("excluido_em") @db.Timestamptz(6)
+
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  curso Curso? @relation(fields: [cursoId], references: [id], onDelete: SetNull)
+
+  equipesLideradas        Equipe[]                 @relation("LiderEquipe")
+  participacoes           IntegranteEquipe[]
+  mentorias               MentorEquipe[]
+  tokens                  TokenUsuario[]
+  sessoes                 Sessao[]
+  anotacoes               AnotacaoMentoria[]
+  tarefasCriadas          Tarefa[]
+  entregas                Entrega[]
+  comentarios             ComentarioTarefa[]
+  mudancasEtapa           HistoricoEtapa[]
+  notificacoes            Notificacao[]
+  preferenciasNotificacao PreferenciaNotificacao[]
+  registrosAuditoria      RegistroAuditoria[]
+
+  @@index([perfil])
+  @@index([cursoId])
+  @@map("usuarios")
+}
+
+/// Tokens de uso único enviados por e-mail. Guarda-se apenas o hash; o token
+/// em claro vai só no link do e-mail.
+model TokenUsuario {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  tipo      TipoToken
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiraEm  DateTime  @map("expira_em") @db.Timestamptz(6)
+  usadoEm   DateTime? @map("usado_em") @db.Timestamptz(6)
+  criadoEm  DateTime  @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, tipo])
+  @@map("tokens_usuario")
+}
+
+/// Sessões de login (refresh token rotativo em cookie httpOnly). Permite
+/// encerrar sessões e invalidar tudo ao desativar/excluir a conta.
+model Sessao {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  usuarioId        String    @map("usuario_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(255)
+  expiraEm         DateTime  @map("expira_em") @db.Timestamptz(6)
+  revogadaEm       DateTime? @map("revogada_em") @db.Timestamptz(6)
+  userAgent        String?   @map("user_agent") @db.VarChar(255)
+  ip               String?   @db.VarChar(45)
+  criadoEm         DateTime  @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("sessoes")
+}
+
+// -----------------------------------------------------------------------------
+// Equipes / ideias e jornada
+// -----------------------------------------------------------------------------
+
+/// A equipe e a ideia são a mesma entidade (RF-05: "registro da equipe/ideia").
+model Equipe {
+  id              String       @id @default(uuid(7)) @db.Uuid
+  /// Nome da ideia/projeto.
+  nome            String       @db.VarChar(160)
+  descricao       String       @db.Text
+  areaId          String       @map("area_id") @db.Uuid
+  estagioIdeia    EstagioIdeia @map("estagio_ideia")
+  comoConheceu    String?      @map("como_conheceu") @db.VarChar(120)
+  /// Período de ingresso no InfoHub, ex.: "2026/2". Base do filtro por
+  /// turma/semestre (RF-24).
+  periodoIngresso String       @map("periodo_ingresso") @db.VarChar(10)
+
+  /// Q1: exatamente um líder por equipe — garantido pela própria coluna.
+  /// RNF-02: se o líder pedir exclusão, outro integrante é promovido aqui.
+  liderId String @map("lider_id") @db.Uuid
+
+  /// Etapa em que a equipe está (aponta para a jornada DESTA equipe).
+  /// Nulo apenas durante a criação, até as etapas serem copiadas.
+  etapaAtualId String? @unique @map("etapa_atual_id") @db.Uuid
+
+  statusJornada StatusJornada @default(EM_ANDAMENTO) @map("status_jornada")
+  prontaEm      DateTime?     @map("pronta_em") @db.Timestamptz(6)
+  encaminhadaEm DateTime?     @map("encaminhada_em") @db.Timestamptz(6)
+
+  /// Q4: exclusão lógica. Equipe excluída some das listagens mas mantém
+  /// tarefas, entregas e histórico.
+  excluidaEm DateTime? @map("excluida_em") @db.Timestamptz(6)
+
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  area       AreaIdeia    @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  lider      Usuario      @relation("LiderEquipe", fields: [liderId], references: [id], onDelete: Restrict)
+  etapaAtual EtapaEquipe? @relation("EtapaAtual", fields: [etapaAtualId], references: [id], onDelete: SetNull)
+
+  integrantes     IntegranteEquipe[]
+  mentores        MentorEquipe[]
+  etapas          EtapaEquipe[]      @relation("EtapasDaEquipe")
+  historicoEtapas HistoricoEtapa[]
+  tarefas         Tarefa[]
+  anotacoes       AnotacaoMentoria[]
+  notificacoes    Notificacao[]
+
+  @@index([statusJornada])
+  @@index([periodoIngresso])
+  @@index([areaId])
+  @@index([liderId])
+  @@index([excluidaEm])
+  @@map("equipes")
+}
+
+/// Alunos da equipe, incluindo o líder. RN-03 (um aluno em uma única equipe
+/// ativa por vez) é verificada no serviço considerando `saiu_em IS NULL` e
+/// o status da equipe.
+model IntegranteEquipe {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  equipeId  String    @map("equipe_id") @db.Uuid
+  usuarioId String    @map("usuario_id") @db.Uuid
+  entrouEm  DateTime  @default(now()) @map("entrou_em") @db.Timestamptz(6)
+  /// Preenchido quando o aluno sai da equipe ou é excluído (RNF-02).
+  saiuEm    DateTime? @map("saiu_em") @db.Timestamptz(6)
+
+  equipe  Equipe  @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([equipeId, usuarioId])
+  @@index([usuarioId])
+  @@map("integrantes_equipe")
+}
+
+/// Mentores responsáveis pela equipe (Q2 / RNF-03: mentor só enxerga e move
+/// as equipes sob sua mentoria).
+model MentorEquipe {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  equipeId    String   @map("equipe_id") @db.Uuid
+  mentorId    String   @map("mentor_id") @db.Uuid
+  atribuidoEm DateTime @default(now()) @map("atribuido_em") @db.Timestamptz(6)
+
+  equipe Equipe  @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  mentor Usuario @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+
+  @@unique([equipeId, mentorId])
+  @@index([mentorId])
+  @@map("mentores_equipe")
+}
+
+/// Catálogo das 6 etapas padrão da jornada (seed). Serve de molde para a
+/// jornada de cada equipe e de coluna do kanban (RF-06).
+model EtapaPadrao {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  numero     Int      @unique @db.SmallInt
+  nome       String   @db.VarChar(120)
+  descricao  String   @db.Text
+  entregavel String   @db.Text
+  criadoEm   DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  etapasEquipe  EtapaEquipe[]
+  modelosTarefa ModeloTarefa[]
+
+  @@map("etapas_padrao")
+}
+
+/// Jornada de UMA equipe: cópia das 6 etapas padrão feita na criação, mais
+/// as etapas extras que o mentor incluir para aquela equipe (decisão da
+/// coordenação: padrão 6, ajustável por equipe). Equipes antigas não são
+/// afetadas por mudanças no catálogo.
+model EtapaEquipe {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  equipeId      String   @map("equipe_id") @db.Uuid
+  /// Posição na jornada da equipe (1..n). Reordenada ao inserir extras.
+  ordem         Int      @db.SmallInt
+  /// Etapa padrão de origem. NULL = etapa extra criada pelo mentor.
+  etapaPadraoId String?  @map("etapa_padrao_id") @db.Uuid
+  nome          String   @db.VarChar(120)
+  descricao     String?  @db.Text
+  criadoEm      DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  equipe      Equipe       @relation("EtapasDaEquipe", fields: [equipeId], references: [id], onDelete: Cascade)
+  etapaPadrao EtapaPadrao? @relation(fields: [etapaPadraoId], references: [id], onDelete: Restrict)
+
+  equipeAtual   Equipe?          @relation("EtapaAtual")
+  tarefas       Tarefa[]
+  historicoDe   HistoricoEtapa[] @relation("HistoricoDe")
+  historicoPara HistoricoEtapa[] @relation("HistoricoPara")
+
+  @@unique([equipeId, ordem])
+  @@map("etapas_equipe")
+}
+
+/// Trilha de auditoria das mudanças de etapa (RF-08, RF-09, RNF-05). Só
+/// recebe INSERT. `forcado` registra o avanço manual do mentor sem todas as
+/// tarefas obrigatórias aprovadas (RN-01).
+model HistoricoEtapa {
+  id            String              @id @default(uuid(7)) @db.Uuid
+  equipeId      String              @map("equipe_id") @db.Uuid
+  deEtapaId     String?             @map("de_etapa_id") @db.Uuid
+  paraEtapaId   String              @map("para_etapa_id") @db.Uuid
+  direcao       DirecaoMudancaEtapa
+  motivo        String?             @db.Text
+  forcado       Boolean             @default(false)
+  alteradoPorId String?             @map("alterado_por_id") @db.Uuid
+  criadoEm      DateTime            @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  equipe      Equipe       @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  // NoAction (checado ao fim do comando): impede apagar uma etapa que já tem
+  // histórico, sem atrapalhar a exclusão em cascata da equipe inteira.
+  deEtapa     EtapaEquipe? @relation("HistoricoDe", fields: [deEtapaId], references: [id], onDelete: NoAction)
+  paraEtapa   EtapaEquipe  @relation("HistoricoPara", fields: [paraEtapaId], references: [id], onDelete: NoAction)
+  alteradoPor Usuario?     @relation(fields: [alteradoPorId], references: [id], onDelete: SetNull)
+
+  @@index([equipeId, criadoEm])
+  @@map("historico_etapas")
+}
+
+// -----------------------------------------------------------------------------
+// Tarefas, entregas e avaliação
+// -----------------------------------------------------------------------------
+
+/// Modelos de tarefa pré-configurados por etapa (RF-11). Os entregáveis
+/// obrigatórios da etapa 6 (RN-02) entram aqui como `obrigatoria = true`.
+model ModeloTarefa {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  etapaPadraoId String   @map("etapa_padrao_id") @db.Uuid
+  titulo        String   @db.VarChar(160)
+  descricao     String?  @db.Text
+  obrigatoria   Boolean  @default(true)
+  /// Ordem de exibição dentro da etapa.
+  ordem         Int      @default(0) @db.SmallInt
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm  DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  etapaPadrao EtapaPadrao @relation(fields: [etapaPadraoId], references: [id], onDelete: Restrict)
+  tarefas     Tarefa[]
+
+  @@index([etapaPadraoId])
+  @@map("modelos_tarefa")
+}
+
+/// Tarefa atribuída a uma equipe (RF-11, RF-12). Sempre pertence a uma etapa
+/// da jornada da equipe; `obrigatoria` alimenta a RN-01.
+model Tarefa {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  equipeId       String       @map("equipe_id") @db.Uuid
+  etapaEquipeId  String       @map("etapa_equipe_id") @db.Uuid
+  modeloTarefaId String?      @map("modelo_tarefa_id") @db.Uuid
+  titulo         String       @db.VarChar(160)
+  descricao      String?      @db.Text
+  prazo          DateTime     @db.Timestamptz(6)
+  status         StatusTarefa @default(PENDENTE)
+  obrigatoria    Boolean      @default(true)
+  criadoPorId    String?      @map("criado_por_id") @db.Uuid
+  criadoEm       DateTime     @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm   DateTime     @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  equipe       Equipe        @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  etapaEquipe  EtapaEquipe   @relation(fields: [etapaEquipeId], references: [id], onDelete: Restrict)
+  modeloTarefa ModeloTarefa? @relation(fields: [modeloTarefaId], references: [id], onDelete: SetNull)
+  criadoPor    Usuario?      @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  entregas     Entrega[]
+  comentarios  ComentarioTarefa[]
+  lembretes    LembreteTarefa[]
+  notificacoes Notificacao[]
+
+  @@index([equipeId])
+  @@index([etapaEquipeId])
+  @@index([status, prazo])
+  @@map("tarefas")
+}
+
+/// Uma entrega = um envio do aluno. Reenvio corrigido gera nova versão
+/// (RF-16: histórico de versões); a anterior nunca é sobrescrita.
+model Entrega {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  tarefaId     String   @map("tarefa_id") @db.Uuid
+  versao       Int      @db.SmallInt
+  enviadoPorId String?  @map("enviado_por_id") @db.Uuid
+  /// Mensagem opcional do aluno junto com a entrega.
+  observacao   String?  @db.Text
+  enviadoEm    DateTime @default(now()) @map("enviado_em") @db.Timestamptz(6)
+
+  tarefa     Tarefa   @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  enviadoPor Usuario? @relation(fields: [enviadoPorId], references: [id], onDelete: SetNull)
+
+  anexos      AnexoEntrega[]
+  comentarios ComentarioTarefa[]
+
+  @@unique([tarefaId, versao])
+  @@map("entregas")
+}
+
+/// Arquivos (ou links) de uma entrega — um ou mais por entrega (RF-14).
+/// O binário fica no disco/volume; aqui vai só o metadado (RNF-04: limite
+/// de tamanho e tipos permitidos são validados no upload).
+model AnexoEntrega {
+  id                   String    @id @default(uuid(7)) @db.Uuid
+  entregaId            String    @map("entrega_id") @db.Uuid
+  tipo                 TipoAnexo
+  /// Nome original do arquivo ou título do link.
+  nomeOriginal         String    @map("nome_original") @db.VarChar(255)
+  /// Caminho relativo no armazenamento (só ARQUIVO).
+  caminhoArmazenamento String?   @map("caminho_armazenamento") @db.VarChar(500)
+  /// Endereço externo (só LINK).
+  url                  String?   @db.VarChar(1000)
+  tamanhoBytes         Int?      @map("tamanho_bytes")
+  mimeType             String?   @map("mime_type") @db.VarChar(120)
+  criadoEm             DateTime  @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  entrega Entrega @relation(fields: [entregaId], references: [id], onDelete: Cascade)
+
+  @@index([entregaId])
+  @@map("anexos_entrega")
+}
+
+/// Avaliações e comentários do mentor/admin na tarefa (RF-15, RNF-05).
+/// `decisao` preenchida = aprovação ou pedido de ajuste da `entrega`
+/// referenciada; nula = comentário livre.
+model ComentarioTarefa {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  tarefaId  String            @map("tarefa_id") @db.Uuid
+  entregaId String?           @map("entrega_id") @db.Uuid
+  autorId   String?           @map("autor_id") @db.Uuid
+  decisao   DecisaoAvaliacao?
+  conteudo  String            @db.Text
+  criadoEm  DateTime          @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  tarefa  Tarefa   @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  entrega Entrega? @relation(fields: [entregaId], references: [id], onDelete: SetNull)
+  autor   Usuario? @relation(fields: [autorId], references: [id], onDelete: SetNull)
+
+  @@index([tarefaId, criadoEm])
+  @@map("comentarios_tarefa")
+}
+
+// -----------------------------------------------------------------------------
+// Lembretes e notificações
+// -----------------------------------------------------------------------------
+
+/// Datas de lembrete de uma tarefa (RF-17), consumidas pelo job (RN-04).
+/// Quando o prazo da tarefa muda, os lembretes ainda não enviados que foram
+/// definidos como "X dias antes" têm `lembrar_em` recalculado; os de data
+/// fixa (`dias_antes` nulo) são mantidos.
+model LembreteTarefa {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  tarefaId  String    @map("tarefa_id") @db.Uuid
+  diasAntes Int?      @map("dias_antes") @db.SmallInt
+  lembrarEm DateTime  @map("lembrar_em") @db.Timestamptz(6)
+  enviadoEm DateTime? @map("enviado_em") @db.Timestamptz(6)
+  criadoEm  DateTime  @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  tarefa Tarefa @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+
+  @@index([tarefaId])
+  @@index([enviadoEm, lembrarEm])
+  @@map("lembretes_tarefa")
+}
+
+/// Fila e registro de todos os e-mails (RF-18/19/20, RNF-05, RNF-06).
+/// `chave_idempotencia` é única: o serviço monta a chave a partir de
+/// tipo + referência + destinatário (ex.: "PRAZO_PROXIMO:lembrete:<id>:usuario:<id>")
+/// e o INSERT falha/ignora se a notificação já existir — é a garantia de que
+/// nada é enviado duas vezes. `tentativas` + `proximo_envio_em` controlam o
+/// reenvio em caso de falha.
+model Notificacao {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  tipo              TipoNotificacao
+  destinatarioId    String?           @map("destinatario_id") @db.Uuid
+  /// Cópia do e-mail no momento do envio (sobrevive a anonimização).
+  emailDestino      String            @map("email_destino") @db.VarChar(160)
+  assunto           String            @db.VarChar(255)
+  corpo             String            @db.Text
+  chaveIdempotencia String?           @unique @map("chave_idempotencia") @db.VarChar(255)
+  status            StatusNotificacao @default(PENDENTE)
+  tentativas        Int               @default(0) @db.SmallInt
+  proximoEnvioEm    DateTime?         @map("proximo_envio_em") @db.Timestamptz(6)
+  enviadaEm         DateTime?         @map("enviada_em") @db.Timestamptz(6)
+  erro              String?           @db.Text
+  equipeId          String?           @map("equipe_id") @db.Uuid
+  tarefaId          String?           @map("tarefa_id") @db.Uuid
+  criadoEm          DateTime          @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm      DateTime          @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  destinatario Usuario? @relation(fields: [destinatarioId], references: [id], onDelete: SetNull)
+  equipe       Equipe?  @relation(fields: [equipeId], references: [id], onDelete: SetNull)
+  tarefa       Tarefa?  @relation(fields: [tarefaId], references: [id], onDelete: SetNull)
+
+  @@index([status, proximoEnvioEm])
+  @@index([destinatarioId])
+  @@index([equipeId])
+  @@index([tarefaId])
+  @@map("notificacoes")
+}
+
+/// RF-21 (desejável): o usuário pode desligar tipos de notificação.
+/// Sem linha = recebe (padrão).
+model PreferenciaNotificacao {
+  id        String          @id @default(uuid(7)) @db.Uuid
+  usuarioId String          @map("usuario_id") @db.Uuid
+  tipo      TipoNotificacao
+  ativo     Boolean         @default(true)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, tipo])
+  @@map("preferencias_notificacao")
+}
+
+// -----------------------------------------------------------------------------
+// Mentoria e auditoria
+// -----------------------------------------------------------------------------
+
+/// Anotações internas do mentor/admin sobre a equipe (RF-10). Nunca são
+/// devolvidas pela API para perfil ALUNO.
+model AnotacaoMentoria {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  equipeId     String   @map("equipe_id") @db.Uuid
+  autorId      String?  @map("autor_id") @db.Uuid
+  conteudo     String   @db.Text
+  criadoEm     DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+  atualizadoEm DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  equipe Equipe   @relation(fields: [equipeId], references: [id], onDelete: Cascade)
+  autor  Usuario? @relation(fields: [autorId], references: [id], onDelete: SetNull)
+
+  @@index([equipeId, criadoEm])
+  @@map("anotacoes_mentoria")
+}
+
+/// Registro de auditoria genérico (RNF-05): quem fez o quê, em qual
+/// registro, com detalhes em JSON (ex.: { de: "PENDENTE", para: "APROVADA" }).
+/// `usuario_id` nulo = ação do sistema (job).
+model RegistroAuditoria {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  usuarioId  String?  @map("usuario_id") @db.Uuid
+  /// Ex.: EQUIPE_ETAPA_ALTERADA, TAREFA_AVALIADA, EMAIL_ENVIADO, USUARIO_EXCLUIDO_LGPD
+  acao       String   @db.VarChar(80)
+  /// Ex.: equipe, tarefa, entrega, usuario, notificacao
+  entidade   String   @db.VarChar(60)
+  entidadeId String?  @map("entidade_id") @db.Uuid
+  detalhes   Json?
+  ip         String?  @db.VarChar(45)
+  criadoEm   DateTime @default(now()) @map("criado_em") @db.Timestamptz(6)
+
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([entidade, entidadeId])
+  @@index([usuarioId])
+  @@index([criadoEm])
+  @@map("registros_auditoria")
+}

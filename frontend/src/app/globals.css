@@ -1,0 +1,257 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #E53525;
+  --primary-dark: #CC2E20;
+  --primary-light: #FEF2F1;
+  --secondary: #F5A623;
+  --secondary-dark: #E09515;
+  --accent: #F5A623;
+  --success: #16a34a;
+  --warning: #eab308;
+  --danger: #dc2626;
+
+  --background: #f8fafc;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-border: #e5e7eb;
+  --card-hover: #f9fafb;
+  --muted: #6b7280;
+  --muted-light: #9ca3af;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --table-header: #f9fafb;
+  --badge-muted-bg: #f3f4f6;
+  --badge-muted-text: #4b5563;
+  --hover-bg: #f3f4f6;
+  --kanban-col-bg: #f3f4f6;
+  --kanban-col-border: #e5e7eb;
+  --divider: #e5e7eb;
+  --highlight-bg: #FEF2F1;
+
+  --sidebar-bg: #1a1a2e;
+  --sidebar-text: #d1d5db;
+  --sidebar-hover: #2a2a42;
+  --sidebar-active-bg: #E53525;
+  --sidebar-active-text: #ffffff;
+  --sidebar-border: #2a2a42;
+
+  --logo-info: #555555;
+  --logo-hub: #E53525;
+
+  --scrollbar-thumb: #d1d5db;
+
+  /* Curvas de movimento: entradas desaceleram, saídas aceleram. Vivem
+     fora do @theme para o CSS comum e o @theme inline enxergarem a mesma
+     variável em runtime. */
+  --motion-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+.dark {
+  --primary: #EF5545;
+  --primary-dark: #E53525;
+  --primary-light: #3A1A16;
+  --secondary: #F5A623;
+  --secondary-dark: #E09515;
+  --accent: #F5A623;
+  --success: #22c55e;
+  --warning: #facc15;
+  --danger: #ef4444;
+
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --card: #1e293b;
+  --card-border: #334155;
+  --card-hover: #253449;
+  --muted: #94a3b8;
+  --muted-light: #64748b;
+  --input-bg: #1e293b;
+  --input-border: #475569;
+  --table-header: #1e293b;
+  --badge-muted-bg: #334155;
+  --badge-muted-text: #cbd5e1;
+  --hover-bg: #253449;
+  --kanban-col-bg: #1e293b;
+  --kanban-col-border: #334155;
+  --divider: #334155;
+  --highlight-bg: #3A1A16;
+
+  --sidebar-bg: #0a0f1a;
+  --sidebar-text: #94a3b8;
+  --sidebar-hover: #1e293b;
+  --sidebar-active-bg: #EF5545;
+  --sidebar-active-text: #ffffff;
+  --sidebar-border: #1e293b;
+
+  --logo-info: #d1d5db;
+  --logo-hub: #EF5545;
+
+  --scrollbar-thumb: #475569;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-light: var(--primary-light);
+  --color-secondary: var(--secondary);
+  --color-secondary-dark: var(--secondary-dark);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-card-hover: var(--card-hover);
+  --color-muted: var(--muted);
+  --color-muted-light: var(--muted-light);
+  --color-input-bg: var(--input-bg);
+  --color-input-border: var(--input-border);
+  --color-table-header: var(--table-header);
+  --color-badge-muted-bg: var(--badge-muted-bg);
+  --color-badge-muted-text: var(--badge-muted-text);
+  --color-hover-bg: var(--hover-bg);
+  --color-kanban-col-bg: var(--kanban-col-bg);
+  --color-kanban-col-border: var(--kanban-col-border);
+  --color-divider: var(--divider);
+  --color-highlight-bg: var(--highlight-bg);
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active-bg: var(--sidebar-active-bg);
+  --color-sidebar-active-text: var(--sidebar-active-text);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-logo-info: var(--logo-info);
+  --color-logo-hub: var(--logo-hub);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Movimento: quatro durações (150/200/300/500+), duas curvas; só
+     transform/opacity animam layout. `ease-enter` e `ease-exit` viram
+     utilities; `animate-*` idem. */
+  --ease-enter: var(--motion-enter);
+  --ease-exit: var(--motion-exit);
+
+  --animate-rise: rise 300ms var(--motion-enter) both;
+  --animate-fade-in: fade-in 200ms ease both;
+  --animate-toast-in: toast-in 300ms var(--motion-enter) both;
+  --animate-toast-out: toast-out 200ms var(--motion-exit) forwards;
+  --animate-dialog-in: dialog-in 300ms var(--motion-enter) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-pulse-ring: pulse-ring 2s ease-out infinite;
+  --animate-pop: pop 360ms var(--motion-enter) both;
+  --animate-fill-x: fill-x 420ms var(--motion-enter) both;
+  --animate-shake: shake 300ms ease-in-out;
+  --animate-drop-pulse: drop-pulse 1.2s ease-in-out infinite;
+  --animate-row-in: row-in 300ms var(--motion-enter) both;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Keyframes ficam fora do @theme para existirem mesmo quando só o CSS
+   comum (skeleton, toast) os usa, sem depender de uma utility. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px); }
+}
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+}
+@keyframes shimmer {
+  from { background-position: -600px 0; }
+  to { background-position: 600px 0; }
+}
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 45%, transparent); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  70% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fill-x {
+  from { transform: scaleX(0); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+@keyframes drop-pulse {
+  0%, 100% { border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+  50% { border-color: var(--primary); }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-8px); }
+}
+
+/* Foco de teclado sempre visível, no mesmo anel em todo o app. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Placeholder de carregamento com brilho que corre. */
+.skeleton {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--badge-muted-bg) 0%, var(--hover-bg) 40%, var(--badge-muted-bg) 80%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* A troca de tema cruza as cores em vez de piscar. A classe é colocada
+   só durante o toggle para não deixar transição global permanente. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 200ms ease, border-color 200ms ease, color 200ms ease !important;
+}
+
+/* Barra de tempo do toast: encolhe de 1 para 0 enquanto ele está na tela. */
+@keyframes toast-bar {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* O check do pipeline se desenha ao concluir uma etapa. */
+.check-draw {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: check-draw 300ms ease-out both;
+}
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

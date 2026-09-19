@@ -1,0 +1,15 @@
+node_modules
+dist
+frontend/.next
+frontend/out
+backend/src/generated
+uploads
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+docs
+*.log
+*.md
+!README.md
