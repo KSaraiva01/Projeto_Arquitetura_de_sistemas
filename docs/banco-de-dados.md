@@ -22,6 +22,7 @@ npm run db:studio           # navegar nos dados
 | `db:status`       | Mostra migrations aplicadas/pendentes.                                    |
 | `db:generate`     | Regera o Prisma Client em `backend/src/generated/prisma` (roda no `build`).       |
 | `db:reset` / `db:push` | Destrutivos. Passam por `scripts/checar-schema.cjs` (ver abaixo).     |
+| `db:recriar`      | `db:reset --force` + `db:seed`: volta o schema ao cenário inicial da G1 sem perguntar (terminal do container ou máquina na rede da AMF). |
 
 ### ⚠️ O banco da faculdade é compartilhado
 
@@ -183,7 +184,7 @@ tarefa vai para APROVADA ou REPROVADA; e-mail `ENTREGA_AVALIADA` ao aluno. Reenv
   mesmas chaves de idempotência dos serviços (o job não reenvia nada) e `registros_auditoria`.
 
   Se o cenário já existir (o líder da EcoTrack está cadastrado), o seed o mantém — um redeploy não desfaz o que foi
-  mexido na apresentação. Para voltar ao estado inicial: `npm run db:reset` e `npm run db:seed`.
+  mexido na apresentação. Para voltar ao estado inicial: `npm run db:recriar`.
 
 Credenciais da demonstração:
 

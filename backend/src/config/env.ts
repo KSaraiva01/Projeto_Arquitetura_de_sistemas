@@ -11,8 +11,18 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default("0.0.0.0"),
-  /** URL pública do sistema — usada nos links dos e-mails. */
-  APP_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * URL pública do sistema — só entra nos links dos e-mails. Um valor inválido
+   * não derruba o servidor: vira aviso e cai no padrão.
+   */
+  APP_URL: z
+    .string()
+    .url()
+    .default("http://localhost:3000")
+    .catch(({ input }) => {
+      console.warn(`[env] APP_URL inválida (${JSON.stringify(input)}) — usando http://localhost:3000 nos links dos e-mails.`);
+      return "http://localhost:3000";
+    }),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL é obrigatória."),
 

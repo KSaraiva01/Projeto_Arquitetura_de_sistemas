@@ -48,8 +48,8 @@ npm run dev               # http://localhost:3000 — API em /api, frontend com 
 
 Outros scripts: `npm run build` (Prisma + tsc + Next), `npm start` (`db:preparar` + servidor de produção — é o que o
 container roda), `npm run typecheck`, `npm run jobs:run` (executa a rotina agendada uma vez), `npm run db:studio`,
-`npm run db:migrate` (nova migration em dev), `npm run db:reset` (zera o schema — protegido pelo
-`scripts/checar-schema.cjs`; depois `npm run db:seed` recria o cenário).
+`npm run db:migrate` (nova migration em dev), `npm run db:reset` (zera o schema, com confirmação) e
+`npm run db:recriar` (zera + migrations + seed, sem confirmação — ambos protegidos pelo `scripts/checar-schema.cjs`).
 
 **Atenção:** o PostgreSQL da faculdade é compartilhado entre as duplas, cada uma no seu schema. Este projeto usa
 `infohub_losekann`; nunca aponte a `DATABASE_URL` para o schema `public`. Detalhes em [docs/banco-de-dados.md](docs/banco-de-dados.md).
@@ -94,8 +94,14 @@ Um único resource (Application), apontando para este repositório na branch `in
 | Healthchecks (opcional)                       | `GET /api/health` na porta `3000`. A imagem já traz um `HEALTHCHECK` equivalente. |
 
 O container roda `npm start`: cria o schema (se preciso), aplica as migrations pendentes, roda o seed e sobe o servidor.
-Nada manual. Um redeploy **não** zera o que foi mexido na demonstração (o seed vê que o cenário existe e o mantém);
-para voltar ao cenário inicial, `npm run db:reset` e `npm run db:seed` no terminal do container.
+Nada manual. Um redeploy **não** zera o que foi mexido na demonstração (o seed vê que o cenário existe e o mantém).
+
+Para **voltar ao cenário inicial da G1** (ou trocar dados antigos do schema pelo cenário), no *Terminal* do container
+no Coolify — ou na sua máquina, na rede da faculdade:
+
+```bash
+npm run db:recriar      # zera o schema da dupla, reaplica as migrations e roda o seed (sem perguntar)
+```
 
 ## Documentação
 

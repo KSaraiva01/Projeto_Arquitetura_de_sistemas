@@ -24,6 +24,7 @@
     "db:studio": "prisma studio",
     "db:checar-schema": "node scripts/checar-schema.cjs",
     "db:reset": "node scripts/checar-schema.cjs && prisma migrate reset",
+    "db:recriar": "node scripts/checar-schema.cjs && prisma migrate reset --force && npm run db:seed",
     "db:push": "node scripts/checar-schema.cjs && prisma db push",
     "jobs:run": "tsx backend/src/jobs/executar.ts"
   },
