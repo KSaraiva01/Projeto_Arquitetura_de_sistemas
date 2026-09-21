@@ -4,18 +4,20 @@
   "private": true,
   "description": "InfoHub → InovAMF – Sistema de Acompanhamento da Jornada do Empreendedor (monolito Node + TypeScript + PostgreSQL + Next.js)",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "tsx watch --clear-screen=false backend/src/server.ts",
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "prisma generate && tsc -p tsconfig.json",
     "build:frontend": "next build frontend",
-    "start": "prisma migrate deploy && node dist/server.js",
+    "start": "npm run db:preparar && node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p frontend/tsconfig.json --noEmit",
     "lint": "eslint frontend",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:preparar": "npm run db:schema && npm run db:deploy && npm run db:seed",
+    "db:schema": "node scripts/criar-schema.cjs",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:status": "prisma migrate status",

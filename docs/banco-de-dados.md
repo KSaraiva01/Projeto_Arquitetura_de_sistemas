@@ -8,16 +8,17 @@ Tabelas e colunas em português (snake_case); no código TypeScript os campos fi
 ```bash
 npm install
 cp .env.example .env        # ajuste DATABASE_URL (com ?schema=...)
-npm run db:deploy           # aplica as migrations pendentes (idempotente)
-npm run db:seed             # dados de referência (+ demo se SEED_DEMO=true)
+npm run db:preparar         # schema → migrations → seed (é o que o `npm start` roda em todo deploy)
 npm run db:studio           # navegar nos dados
 ```
 
 | Script            | O que faz                                                                 |
 | ----------------- | ------------------------------------------------------------------------- |
-| `db:deploy`       | `prisma migrate deploy` — aplica migrations. É o que roda no `npm start`. |
+| `db:preparar`     | `db:schema` + `db:deploy` + `db:seed`, nessa ordem — a exigência da G1 ("o seed cria schema, tabelas e inserts") em um comando. Roda no `npm start`. |
+| `db:schema`       | `scripts/criar-schema.cjs` — `CREATE SCHEMA` do `?schema=` da URL, se ainda não existir (recusa `public`). |
+| `db:deploy`       | `prisma migrate deploy` — aplica as migrations pendentes (idempotente).  |
 | `db:migrate`      | `prisma migrate dev` — cria uma nova migration a partir do schema (dev).  |
-| `db:seed`         | `prisma db seed` → `prisma/seed.ts`.                                      |
+| `db:seed`         | `prisma db seed` → `prisma/seed.ts` (idempotente).                        |
 | `db:status`       | Mostra migrations aplicadas/pendentes.                                    |
 | `db:generate`     | Regera o Prisma Client em `backend/src/generated/prisma` (roda no `build`).       |
 | `db:reset` / `db:push` | Destrutivos. Passam por `scripts/checar-schema.cjs` (ver abaixo).     |
@@ -30,6 +31,8 @@ schema (`cairo_matheus`, `dupla_lorenzo_luiz`, …). O `public` pertence a outro
 * A `DATABASE_URL` **sempre** termina com `?schema=infohub_losekann`. Migrations, seeds e `reset` só tocam esse schema.
 * O driver `pg` ignora o `?schema=`; `backend/src/lib/prisma.ts` extrai o nome da URL e o aplica ao adapter e ao `search_path`.
   Sem isso o client gravaria no `public` de outro grupo (foi o que aconteceu na primeira tentativa de seed).
+* A mesma conexão fixa `TimeZone=UTC` na sessão: o Prisma envia e lê datas sem fuso, e o servidor da faculdade roda em
+  America/Sao_Paulo — sem isso todo TIMESTAMPTZ gravado ficava 3 h deslocado em relação ao `now()` do banco.
 * `db:reset` e `db:push` abortam se a URL não tiver `schema=` ou se for `public`.
 
 Para desenvolvimento isolado há um Postgres local em `docker-compose.dev.yml`.
@@ -40,7 +43,7 @@ Para desenvolvimento isolado há um Postgres local em `docker-compose.dev.yml`.
 2. `npm run db:migrate -- --name descricao_curta` (precisa de um banco de desenvolvimento; o usuário `arquitetura`
    tem permissão para o shadow database temporário que o Prisma cria e apaga).
 3. Revise o SQL gerado em `prisma/migrations/<timestamp>_descricao_curta/migration.sql` e commite a pasta.
-4. Em produção o `npm start` roda `migrate deploy` antes de subir o servidor.
+4. Em produção o `npm start` roda `db:preparar` (schema → `migrate deploy` → seed) antes de subir o servidor.
 
 Alternativa sem shadow database: `npx prisma migrate diff --from-migrations prisma/migrations --to-schema prisma/schema.prisma --script`
 gera o SQL da diferença para colar numa pasta de migration criada à mão.
@@ -161,20 +164,36 @@ tarefa vai para APROVADA ou REPROVADA; e-mail `ENTREGA_AVALIADA` ao aluno. Reenv
 
 ## Seeds
 
-`prisma/seed.ts` é idempotente:
+`prisma/seed.ts` roda em todo deploy (`npm start` → `db:preparar`) e é idempotente:
 
 * **Sempre:** 8 cursos, 7 áreas, 6 etapas padrão, 9 modelos de tarefa e o admin (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_SENHA`
   no `.env` — **troque a senha padrão antes de expor o sistema**).
-* **Com `SEED_DEMO=true`:** 2 mentores, 8 equipes espalhadas pelas 6 etapas (uma já PRONTA_INOVAMF), 13 tarefas em todos os
-  status, entregas com múltiplas versões e um link, avaliações, lembretes, anotações, notificações e auditoria.
-  Se a demo já existir, o seed a pula; `npm run db:reset` recria tudo.
+* **Cenário da G1** (a menos que `SEED_DEMO=false`), exatamente como o professor pediu:
+
+  | Equipe         | Integrantes (líder em negrito)                                       | Mentor  | Situação |
+  | -------------- | -------------------------------------------------------------------- | ------- | -------- |
+  | **EcoTrack**   | **Lucas Oliveira**, Fernanda Lima, João Pedro Martins                | Ana     | Etapa 1 aprovada → **Etapa 2**; tarefa "Confirmar agendamento do 1º encontro" pendente (vence em 5 dias). |
+  | **MedConnect** | **Mariana Santos**, Carlos Eduardo Pinto, Beatriz Nunes              | Ana     | Etapa 1 aprovada → **Etapa 2**; a tarefa da etapa 2 venceu há 4 dias → **ATRASADA**. |
+  | **AgroSense**  | **Pedro Henrique Costa**, Ana Clara Souza, Rafael Torres, Isabela Rocha | Ricardo | **Etapa 1**; "Cadastro da ideia" **entregue**, aguardando avaliação. |
+
+  Mentores: Ana Beatriz Ramos (2 equipes), Ricardo Ferreira (1), Paula Andrade e Marcos Vieira (nenhuma — para o admin
+  atribuir ao vivo). Tudo gravado como se tivesse passado pelos fluxos: `historico_etapas` (INICIO e AVANCO 1 → 2 pela
+  mentora), `entregas` com um PDF real em `UPLOADS_DIR/demo/` (dá para baixar), `comentarios_tarefa` com a decisão,
+  `lembretes_tarefa` (3 e 1 dias antes; os que já dispararam constam como enviados), `notificacoes` já ENVIADAS com as
+  mesmas chaves de idempotência dos serviços (o job não reenvia nada) e `registros_auditoria`.
+
+  Se o cenário já existir (o líder da EcoTrack está cadastrado), o seed o mantém — um redeploy não desfaz o que foi
+  mexido na apresentação. Para voltar ao estado inicial: `npm run db:reset` e `npm run db:seed`.
 
 Credenciais da demonstração:
 
-| Perfil  | E-mail                       | Senha       |
-| ------- | ---------------------------- | ----------- |
-| Admin   | `admin@infohub.amf.edu.br`   | `Admin@123` |
-| Mentor  | `ana@amf.edu.br`             | `Mentor@123`|
-| Mentor  | `ricardo@amf.edu.br`         | `Mentor@123`|
-| Líder   | `lucas@aluno.amf.edu.br` (EcoTrack) | `Aluno@123` |
-| Integrante | `fernanda@aluno.amf.edu.br` (EcoTrack) | `Aluno@123` |
+| Perfil     | E-mail                                         | Senha        |
+| ---------- | ---------------------------------------------- | ------------ |
+| Admin      | `admin@infohub.amf.edu.br`                     | `Admin@123`  |
+| Mentor     | `ana@amf.edu.br` (EcoTrack e MedConnect)       | `Mentor@123` |
+| Mentor     | `ricardo@amf.edu.br` (AgroSense)               | `Mentor@123` |
+| Mentor     | `paula@amf.edu.br`, `marcos@amf.edu.br` (sem equipe) | `Mentor@123` |
+| Líder      | `lucas@aluno.amf.edu.br` (EcoTrack)            | `Aluno@123`  |
+| Líder      | `mariana@aluno.amf.edu.br` (MedConnect)        | `Aluno@123`  |
+| Líder      | `pedro@aluno.amf.edu.br` (AgroSense)           | `Aluno@123`  |
+| Integrante | `fernanda@aluno.amf.edu.br` (EcoTrack)         | `Aluno@123`  |

@@ -15,6 +15,13 @@ import { PrismaClient } from "../generated/prisma/client";
  * no schema `public` (de outro grupo). Por isso o schema é extraído da URL
  * e aplicado tanto ao adapter (queries geradas) quanto ao `search_path` da
  * conexão (queries brutas via $queryRaw).
+ *
+ * ATENÇÃO — fuso horário:
+ * O Prisma envia datas ao `pg` sem indicação de fuso e as lê do mesmo jeito.
+ * Se a sessão do PostgreSQL estiver em outro fuso (o servidor da faculdade
+ * roda em America/Sao_Paulo), todo TIMESTAMPTZ gravado fica deslocado em
+ * 3 horas em relação ao `now()` do banco (colunas com @default(now()),
+ * comparações de prazo). Fixar a sessão em UTC elimina o deslocamento.
  */
 const connectionString = process.env.DATABASE_URL;
 
@@ -35,8 +42,9 @@ export const schemaBanco = schemaDaUrl(connectionString);
 const adapter = new PrismaPg(
   {
     connectionString,
-    // Garante o schema também para conexões/queries fora do Prisma Client.
-    options: `-c search_path="${schemaBanco}"`,
+    // Garante o schema também para conexões/queries fora do Prisma Client,
+    // e a sessão em UTC (ver nota sobre fuso horário acima).
+    options: `-c search_path="${schemaBanco}" -c TimeZone=UTC`,
   },
   { schema: schemaBanco },
 );

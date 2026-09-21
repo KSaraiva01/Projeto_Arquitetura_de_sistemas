@@ -1,5 +1,5 @@
 /**
- * Seed do InfoHub — executado com `npm run db:seed` (prisma db seed).
+ * Seed do InfoHub — roda em TODO deploy (`npm start`) e em `npm run db:seed`.
  *
  * Duas camadas, ambas idempotentes (pode rodar quantas vezes quiser):
  *
@@ -7,18 +7,38 @@
  *     padrão da jornada, os modelos de tarefa por etapa e a conta de
  *     administrador (SEED_ADMIN_* no .env).
  *
- *  2. Dados de demonstração (só com SEED_DEMO=true): mentores, equipes em
- *     diferentes etapas, tarefas, entregas, avaliações, lembretes, anotações
- *     e notificações — o suficiente para navegar no sistema inteiro.
- *     Senha de todos os usuários demo: Aluno@123 / Mentor@123.
+ *  2. Cenário de demonstração da G1 (a menos que SEED_DEMO=false) — exatamente
+ *     o que o professor pediu para a avaliação:
+ *       • 3 equipes com ao menos 3 integrantes cada, sendo 1 líder por equipe;
+ *       • 1 administrador e 4 mentores — um mentor atende 2 equipes, outro
+ *         atende a terceira (os outros dois ficam livres para o admin atribuir);
+ *       • 2 equipes com a Etapa 1 aprovada, cursando a Etapa 2;
+ *       • 1 equipe com tarefa de prazo atrasado.
+ *     Tudo é gravado como se tivesse passado pelos fluxos do sistema: histórico
+ *     de etapas, entregas com arquivo real, avaliações, lembretes, notificações
+ *     (já ENVIADAS, com as mesmas chaves de idempotência dos serviços) e
+ *     auditoria. Se a demo já existir, ela é pulada — um redeploy não desfaz o
+ *     que foi mexido na apresentação (`npm run db:reset` recria do zero).
+ *     Senhas: Mentor@123 (mentores) e Aluno@123 (alunos).
  */
 import "dotenv/config";
+import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
+import { env } from "../backend/src/config/env";
+import type { EstagioIdeia, Prisma, StatusTarefa, TipoNotificacao } from "../backend/src/generated/prisma/client";
 import { prisma } from "../backend/src/lib/prisma";
-import type {
-  EstagioIdeia,
-  StatusTarefa,
-} from "../backend/src/generated/prisma/client";
+import { dataDoLembrete } from "../backend/src/shared/datas";
+import {
+  emailEntregaAvaliada,
+  emailEntregaRecebida,
+  emailNovaTarefa,
+  emailNovoCadastro,
+  emailPrazoProximo,
+  emailPrazoVencido,
+  emailTarefaAtrasada,
+  type ModeloEmail,
+} from "../backend/src/shared/email/templates";
 
 // ---------------------------------------------------------------------------
 // Utilidades
@@ -26,17 +46,19 @@ import type {
 
 const BCRYPT_ROUNDS = 10;
 
-function diasAtras(dias: number, hora = 9): Date {
+/** N dias atrás, em um horário "de expediente" (9h por padrão). */
+function diasAtras(dias: number, hora = 9, minuto = 0): Date {
   const d = new Date();
   d.setDate(d.getDate() - dias);
-  d.setHours(hora, 0, 0, 0);
+  d.setHours(hora, minuto, 0, 0);
   return d;
 }
 
-function diasAFrente(dias: number, hora = 23): Date {
+/** Prazo de tarefa: fim do dia (23:59:59.999), como `fimDoDia` faz na API. Negativo = já passou. */
+function prazoEm(dias: number): Date {
   const d = new Date();
   d.setDate(d.getDate() + dias);
-  d.setHours(hora, 59, 0, 0);
+  d.setHours(23, 59, 59, 999);
   return d;
 }
 
@@ -195,59 +217,35 @@ async function seedReferencia() {
     );
   }
 
-  return { admin, etapaPorNumero };
+  return { admin };
 }
 
 // ---------------------------------------------------------------------------
-// 2. Dados de demonstração
+// 2. Cenário de demonstração (G1)
 // ---------------------------------------------------------------------------
-
-type StatusMock =
-  | "pendente"
-  | "em_andamento"
-  | "entregue"
-  | "atrasada"
-  | "aprovada"
-  | "reprovada";
-
-const STATUS_MAP: Record<StatusMock, StatusTarefa> = {
-  pendente: "PENDENTE",
-  em_andamento: "EM_ANDAMENTO",
-  entregue: "ENTREGUE",
-  atrasada: "ATRASADA",
-  aprovada: "APROVADA",
-  reprovada: "REPROVADA",
-};
 
 interface PessoaDemo {
   nome: string;
   email: string;
-  curso: string;
+  curso?: string;
   semestre?: number;
   telefone?: string;
 }
 
-interface ArquivoDemo {
-  nome: string;
-  tamanhoBytes: number;
-  mimeType: string;
-  /** dias atrás em que a versão foi enviada */
-  enviadoHa: number;
-}
-
 interface TarefaDemo {
-  titulo: string;
-  descricao: string;
+  /** Título de um modelo de tarefa (MODELOS_TAREFA) — a tarefa nasce dele. */
+  modelo: string;
+  /** Número da etapa padrão em que a tarefa fica. */
   etapa: number;
-  /** prazo em dias relativos a hoje (negativo = já passou) */
+  /** Dias atrás em que o mentor criou a tarefa. */
+  criadaHa: number;
+  /** Prazo em dias a partir de hoje (negativo = já venceu). */
   prazoEmDias: number;
-  status: StatusMock;
-  obrigatoria?: boolean;
-  /** uma entrada por versão de entrega (RF-16) */
-  entregas?: ArquivoDemo[];
-  /** link como entrega (Q3) */
-  link?: { titulo: string; url: string; enviadoHa: number };
-  comentarioAvaliacao?: string;
+  status: StatusTarefa;
+  /** Entrega do líder (RF-14): um PDF real gravado em UPLOADS_DIR + observação. */
+  entrega?: { ha: number; arquivo: string; observacao: string; conteudo: string[] };
+  /** Avaliação do mentor sobre a entrega (RF-15). */
+  avaliacao?: { ha: number; decisao: "APROVADA" | "REPROVADA"; comentario: string };
 }
 
 interface EquipeDemo {
@@ -256,24 +254,31 @@ interface EquipeDemo {
   area: string;
   estagioIdeia: EstagioIdeia;
   comoConheceu: string;
-  criadaHa: number;
-  etapaAtual: number;
-  /** dias atrás em que cada etapa concluída foi encerrada (índice 0 = etapa 1) */
-  concluidasHa: number[];
-  pronta?: boolean;
+  /** Dias atrás em que o líder cadastrou a ideia (RF-05). */
+  cadastradaHa: number;
+  /** E-mail do mentor responsável (RF-06). */
+  mentor: string;
   lider: PessoaDemo;
   integrantes: PessoaDemo[];
-  mentor: string;
+  /** Quando houver, o mentor avançou a equipe da etapa 1 para a 2 há N dias (RF-09). */
+  avancouParaEtapa2Ha?: number;
   tarefas: TarefaDemo[];
-  anotacoes: { autor: string; conteudo: string; ha: number }[];
+  anotacoes: { ha: number; conteudo: string }[];
 }
 
+/**
+ * 4 mentores: Ana atende EcoTrack e MedConnect; Ricardo atende a AgroSense;
+ * Paula e Marcos ficam sem equipe (o admin pode atribuí-los ao vivo — RF-06).
+ */
 const MENTORES: PessoaDemo[] = [
-  { nome: "Ana Beatriz Ramos", email: "ana@amf.edu.br", curso: "" },
-  { nome: "Ricardo Ferreira", email: "ricardo@amf.edu.br", curso: "" },
+  { nome: "Ana Beatriz Ramos", email: "ana@amf.edu.br", telefone: "(55) 99101-1001" },
+  { nome: "Ricardo Ferreira", email: "ricardo@amf.edu.br", telefone: "(55) 99102-1002" },
+  { nome: "Paula Andrade", email: "paula@amf.edu.br", telefone: "(55) 99103-1003" },
+  { nome: "Marcos Vieira", email: "marcos@amf.edu.br", telefone: "(55) 99104-1004" },
 ];
 
 const EQUIPES_DEMO: EquipeDemo[] = [
+  // Etapa 1 aprovada → cursando a etapa 2, com a tarefa da etapa 2 em aberto.
   {
     nome: "EcoTrack",
     descricao:
@@ -281,40 +286,42 @@ const EQUIPES_DEMO: EquipeDemo[] = [
     area: "Sustentabilidade",
     estagioIdeia: "PROTOTIPO",
     comoConheceu: "Professor(a) ou coordenação",
-    criadaHa: 185,
-    etapaAtual: 5,
-    concluidasHa: [182, 168, 130, 90],
-    lider: { nome: "Lucas Oliveira", email: "lucas@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 6, telefone: "(54) 99101-2233" },
+    cadastradaHa: 20,
+    mentor: "ana@amf.edu.br",
+    lider: { nome: "Lucas Oliveira", email: "lucas@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 6, telefone: "(55) 99201-2001" },
     integrantes: [
-      { nome: "Fernanda Lima", email: "fernanda@aluno.amf.edu.br", curso: "Administração", semestre: 4 },
+      { nome: "Fernanda Lima", email: "fernanda@aluno.amf.edu.br", curso: "Administração", semestre: 4, telefone: "(55) 99201-2002" },
       { nome: "João Pedro Martins", email: "joao@aluno.amf.edu.br", curso: "Administração", semestre: 4 },
     ],
-    mentor: "ana@amf.edu.br",
+    avancouParaEtapa2Ha: 12,
     tarefas: [
       {
-        titulo: "Validar Value Proposition Design",
-        descricao: "Ajustar o VPD com base no feedback do mentor e reenviar a versão final.",
-        etapa: 4,
-        prazoEmDias: -30,
-        status: "aprovada",
-        entregas: [
-          { nome: "VPD_EcoTrack_v1.pdf", tamanhoBytes: 2_100_000, mimeType: "application/pdf", enviadoHa: 40 },
-          { nome: "VPD_EcoTrack_v2.pdf", tamanhoBytes: 2_400_000, mimeType: "application/pdf", enviadoHa: 32 },
-        ],
-        comentarioAvaliacao: "Versão 2 ficou clara e alinhada ao público-alvo. Aprovado.",
+        modelo: "Cadastro da ideia",
+        etapa: 1,
+        criadaHa: 19,
+        prazoEmDias: -13,
+        status: "APROVADA",
+        entrega: {
+          ha: 14,
+          arquivo: "Formulario_ideia_EcoTrack.pdf",
+          observacao: "Segue o formulário da ideia preenchido conforme orientação da mentoria.",
+          conteudo: [
+            "Problema: as pessoas não sabem quanto CO2 as escolhas do dia a dia geram.",
+            "Solução: app que registra deslocamentos, consumo e alimentação e calcula a pegada semanal.",
+            "Público-alvo: universitários de 18 a 30 anos preocupados com sustentabilidade.",
+            "Diferencial: gamificação com desafios semanais e ranking entre amigos.",
+            "Equipe: Lucas Oliveira (líder), Fernanda Lima e João Pedro Martins.",
+          ],
+        },
+        avaliacao: { ha: 12, decisao: "APROVADA", comentario: "Ideia bem descrita, problema e público-alvo claros. Aprovado — vamos para o contato com a equipe." },
       },
-      {
-        titulo: "Enviar Business Model Canvas",
-        descricao: "Preencher e enviar o Business Model Canvas conforme modelo discutido na mentoria.",
-        etapa: 5,
-        prazoEmDias: 7,
-        status: "pendente",
-      },
+      { modelo: "Confirmar agendamento do 1º encontro", etapa: 2, criadaHa: 12, prazoEmDias: 5, status: "PENDENTE" },
     ],
     anotacoes: [
-      { autor: "ana@amf.edu.br", conteudo: "Equipe demonstrou boa evolução na definição do modelo de negócio. Lucas está liderando bem, mas precisa envolver mais a Fernanda nas decisões técnicas.", ha: 10 },
+      { ha: 12, conteudo: "Equipe engajada e com protótipo navegável. Sugeri validar a proposta com 10 alunos antes do 1º encontro." },
     ],
   },
+  // Etapa 1 aprovada → cursando a etapa 2, mas a tarefa da etapa 2 venceu sem entrega (ATRASADA).
   {
     nome: "MedConnect",
     descricao:
@@ -322,34 +329,42 @@ const EQUIPES_DEMO: EquipeDemo[] = [
     area: "Saúde",
     estagioIdeia: "APENAS_IDEIA",
     comoConheceu: "Colega de curso",
-    criadaHa: 140,
-    etapaAtual: 3,
-    concluidasHa: [137, 120],
-    lider: { nome: "Mariana Santos", email: "mariana@aluno.amf.edu.br", curso: "Administração", semestre: 4, telefone: "(54) 99202-3344" },
+    cadastradaHa: 25,
+    mentor: "ana@amf.edu.br",
+    lider: { nome: "Mariana Santos", email: "mariana@aluno.amf.edu.br", curso: "Administração", semestre: 4, telefone: "(55) 99202-2001" },
     integrantes: [
       { nome: "Carlos Eduardo Pinto", email: "carloseduardo@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 3 },
+      { nome: "Beatriz Nunes", email: "beatriz@aluno.amf.edu.br", curso: "Direito", semestre: 5, telefone: "(55) 99202-2003" },
     ],
-    mentor: "ricardo@amf.edu.br",
+    avancouParaEtapa2Ha: 18,
     tarefas: [
       {
-        titulo: "Definir problema e público-alvo",
-        descricao: "Após o primeiro encontro, documentar o problema identificado, público-alvo e proposta de solução inicial.",
-        etapa: 3,
-        prazoEmDias: 5,
-        status: "em_andamento",
+        modelo: "Cadastro da ideia",
+        etapa: 1,
+        criadaHa: 24,
+        prazoEmDias: -19,
+        status: "APROVADA",
+        entrega: {
+          ha: 20,
+          arquivo: "Formulario_ideia_MedConnect.pdf",
+          observacao: "Formulário completo. Ainda estamos pesquisando a regulamentação de telemedicina.",
+          conteudo: [
+            "Problema: pacientes de áreas rurais viajam horas para uma consulta simples.",
+            "Solução: plataforma de telemedicina com triagem inicial por IA e agenda de médicos parceiros.",
+            "Público-alvo: moradores de municípios sem atendimento especializado.",
+            "Modelo: assinatura mensal para prefeituras e cooperativas de saúde.",
+            "Equipe: Mariana Santos (líder), Carlos Eduardo Pinto e Beatriz Nunes.",
+          ],
+        },
+        avaliacao: { ha: 18, decisao: "APROVADA", comentario: "Boa descrição do problema. Aprovado; tragam a pesquisa sobre regulamentação para o 1º encontro." },
       },
-      {
-        titulo: "Enviar documento de solução",
-        descricao: "Redigir documento descrevendo a solução proposta com detalhes técnicos e diagrama de fluxo.",
-        etapa: 3,
-        prazoEmDias: -3,
-        status: "atrasada",
-      },
+      { modelo: "Confirmar agendamento do 1º encontro", etapa: 2, criadaHa: 18, prazoEmDias: -4, status: "ATRASADA" },
     ],
     anotacoes: [
-      { autor: "ricardo@amf.edu.br", conteudo: "A ideia tem potencial, mas a equipe precisa pesquisar melhor a regulamentação de telemedicina. Sugeri buscar orientação no curso de Direito.", ha: 15 },
+      { ha: 18, conteudo: "A ideia tem potencial, mas a equipe precisa entender a regulamentação de telemedicina. Sugeri orientação no curso de Direito." },
     ],
   },
+  // Etapa 1: formulário entregue, aguardando a avaliação do mentor (RN-01 ao vivo: aprovar → avançar).
   {
     nome: "AgroSense",
     descricao:
@@ -357,459 +372,423 @@ const EQUIPES_DEMO: EquipeDemo[] = [
     area: "Agronegócio",
     estagioIdeia: "MVP_EM_DESENVOLVIMENTO",
     comoConheceu: "Evento da faculdade",
-    criadaHa: 210,
-    etapaAtual: 6,
-    concluidasHa: [207, 190, 155, 115, 75],
-    lider: { nome: "Pedro Henrique Costa", email: "pedro@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 8, telefone: "(54) 99303-4455" },
+    cadastradaHa: 9,
+    mentor: "ricardo@amf.edu.br",
+    lider: { nome: "Pedro Henrique Costa", email: "pedro@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 8, telefone: "(55) 99203-2001" },
     integrantes: [
       { nome: "Ana Clara Souza", email: "anaclara@aluno.amf.edu.br", curso: "Ontopsicologia", semestre: 5 },
-      { nome: "Rafael Torres", email: "rafael@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 8 },
+      { nome: "Rafael Torres", email: "rafael@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 8, telefone: "(55) 99203-2003" },
       { nome: "Isabela Rocha", email: "isabela@aluno.amf.edu.br", curso: "Pedagogia", semestre: 2 },
     ],
-    mentor: "ana@amf.edu.br",
     tarefas: [
       {
-        titulo: "Gravar Pitch Vídeo",
-        descricao: "Gravar vídeo de pitch de até 3 minutos apresentando o projeto AgroSense, problema, solução e modelo de negócio.",
-        etapa: 6,
-        prazoEmDias: 4,
-        status: "pendente",
-      },
-      {
-        titulo: "Entregar Canvas final",
-        descricao: "Versão final do Business Model Canvas após revisões da mentoria.",
-        etapa: 6,
-        prazoEmDias: 4,
-        status: "entregue",
-        entregas: [
-          { nome: "BMC_AgroSense_final.pdf", tamanhoBytes: 1_800_000, mimeType: "application/pdf", enviadoHa: 1 },
-        ],
-      },
-      {
-        titulo: "Confirmar dados dos integrantes",
-        descricao: "Preencher formulário com dados completos de todos os integrantes para submissão ao InovAMF.",
-        etapa: 6,
-        prazoEmDias: 5,
-        status: "pendente",
+        modelo: "Cadastro da ideia",
+        etapa: 1,
+        criadaHa: 8,
+        prazoEmDias: 3,
+        status: "ENTREGUE",
+        entrega: {
+          ha: 1,
+          arquivo: "Formulario_ideia_AgroSense.pdf",
+          observacao: "Segue o formulário completo da ideia. O protótipo do sensor já está funcionando em bancada.",
+          conteudo: [
+            "Problema: pequenos produtores irrigam no palpite e perdem safra por excesso ou falta de água.",
+            "Solução: sensor de umidade e clima de baixo custo com alertas no celular.",
+            "Público-alvo: produtores familiares da região central do RS.",
+            "Estágio: MVP em desenvolvimento — 3 sensores em teste em uma propriedade parceira.",
+            "Equipe: Pedro Henrique Costa (líder), Ana Clara Souza, Rafael Torres e Isabela Rocha.",
+          ],
+        },
       },
     ],
-    anotacoes: [
-      { autor: "ana@amf.edu.br", conteudo: "Projeto muito sólido. Hardware já funcional. Falta apenas finalizar o pitch e organizar a documentação para submissão.", ha: 3 },
-    ],
-  },
-  {
-    nome: "FinLit",
-    descricao:
-      "App de educação financeira gamificado para jovens universitários, com simulações de investimento e controle de gastos.",
-    area: "Finanças",
-    estagioIdeia: "APENAS_IDEIA",
-    comoConheceu: "Redes sociais",
-    criadaHa: 8,
-    etapaAtual: 1,
-    concluidasHa: [],
-    lider: { nome: "Gabriela Mendes", email: "gabriela@aluno.amf.edu.br", curso: "Ciências Contábeis", semestre: 2, telefone: "(54) 99404-5566" },
-    integrantes: [],
-    mentor: "ricardo@amf.edu.br",
-    tarefas: [],
-    anotacoes: [],
-  },
-  {
-    nome: "StudyBuddy",
-    descricao:
-      "Plataforma de estudo colaborativo com IA que sugere grupos de estudo e materiais personalizados por curso.",
-    area: "Educação",
-    estagioIdeia: "PROTOTIPO",
-    comoConheceu: "Professor(a) ou coordenação",
-    criadaHa: 120,
-    etapaAtual: 4,
-    concluidasHa: [117, 102, 65],
-    lider: { nome: "Thiago Nascimento", email: "thiago@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 5, telefone: "(54) 99505-6677" },
-    integrantes: [
-      { nome: "Camila Andrade", email: "camila@aluno.amf.edu.br", curso: "Pedagogia", semestre: 6 },
-    ],
-    mentor: "ana@amf.edu.br",
-    tarefas: [
-      {
-        titulo: "Enviar Value Proposition Design",
-        descricao: "Construir e enviar o Value Proposition Design do projeto StudyBuddy.",
-        etapa: 4,
-        prazoEmDias: 10,
-        status: "reprovada",
-        entregas: [
-          { nome: "VPD_StudyBuddy_v1.pdf", tamanhoBytes: 1_200_000, mimeType: "application/pdf", enviadoHa: 2 },
-        ],
-        comentarioAvaliacao: "O segmento de clientes está genérico demais. Detalhem as dores de alunos de primeiro ano e reenviem.",
-      },
-    ],
-    anotacoes: [],
-  },
-  {
-    nome: "ReciclAí",
-    descricao:
-      "Marketplace para venda de materiais recicláveis, conectando catadores a empresas de reciclagem com logística integrada.",
-    area: "Sustentabilidade",
-    estagioIdeia: "APENAS_IDEIA",
-    comoConheceu: "Site da AMF",
-    criadaHa: 75,
-    etapaAtual: 2,
-    concluidasHa: [72],
-    lider: { nome: "Juliana Ferreira", email: "juliana@aluno.amf.edu.br", curso: "Administração", semestre: 3, telefone: "(54) 99606-7788" },
-    integrantes: [
-      { nome: "Bruno Almeida", email: "bruno@aluno.amf.edu.br", curso: "Hotelaria", semestre: 3 },
-    ],
-    mentor: "ricardo@amf.edu.br",
-    tarefas: [
-      {
-        titulo: "Confirmar agendamento do 1º encontro",
-        descricao: "Confirmar data e horário do primeiro encontro com o mentor.",
-        etapa: 2,
-        prazoEmDias: 2,
-        status: "pendente",
-      },
-    ],
-    anotacoes: [],
-  },
-  {
-    nome: "CareBot",
-    descricao:
-      "Chatbot de saúde mental para universitários, com exercícios de mindfulness e encaminhamento para profissionais.",
-    area: "Saúde",
-    estagioIdeia: "MVP_PRONTO",
-    comoConheceu: "Colega de curso",
-    criadaHa: 250,
-    etapaAtual: 6,
-    concluidasHa: [247, 232, 200, 160, 120],
-    pronta: true,
-    lider: { nome: "Amanda Ribeiro", email: "amanda@aluno.amf.edu.br", curso: "Ontopsicologia", semestre: 7, telefone: "(54) 99707-8899" },
-    integrantes: [
-      { nome: "Diego Monteiro", email: "diego@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 7 },
-      { nome: "Letícia Barbosa", email: "leticia@aluno.amf.edu.br", curso: "Ontopsicologia", semestre: 5 },
-    ],
-    mentor: "ana@amf.edu.br",
-    tarefas: [
-      {
-        titulo: "Entregar VPD final",
-        descricao: "Versão final do Value Proposition Design.",
-        etapa: 6,
-        prazoEmDias: -40,
-        status: "aprovada",
-        entregas: [
-          { nome: "VPD_CareBot_final.pdf", tamanhoBytes: 3_100_000, mimeType: "application/pdf", enviadoHa: 41 },
-        ],
-        comentarioAvaliacao: "Excelente. Pronto para o InovAMF.",
-      },
-      {
-        titulo: "Entregar Canvas final",
-        descricao: "Versão final do Business Model Canvas.",
-        etapa: 6,
-        prazoEmDias: -40,
-        status: "aprovada",
-        entregas: [
-          { nome: "BMC_CareBot_final.pdf", tamanhoBytes: 1_900_000, mimeType: "application/pdf", enviadoHa: 41 },
-        ],
-        comentarioAvaliacao: "Aprovado.",
-      },
-      {
-        titulo: "Gravar Pitch Vídeo",
-        descricao: "Pitch de apresentação do CareBot.",
-        etapa: 6,
-        prazoEmDias: -38,
-        status: "aprovada",
-        link: { titulo: "Pitch CareBot (YouTube)", url: "https://youtu.be/exemplo-carebot", enviadoHa: 39 },
-        comentarioAvaliacao: "Pitch objetivo e dentro do tempo. Aprovado.",
-      },
-      {
-        titulo: "Confirmar dados dos integrantes",
-        descricao: "Dados completos de todos os integrantes para submissão ao InovAMF.",
-        etapa: 6,
-        prazoEmDias: -38,
-        status: "aprovada",
-        comentarioAvaliacao: "Conferido.",
-      },
-    ],
-    anotacoes: [],
-  },
-  {
-    nome: "SmartCampus",
-    descricao:
-      "Sistema de navegação interna para o campus com acessibilidade para deficientes visuais usando beacons bluetooth.",
-    area: "Tecnologia",
-    estagioIdeia: "APENAS_IDEIA",
-    comoConheceu: "Outro",
-    criadaHa: 2,
-    etapaAtual: 1,
-    concluidasHa: [],
-    lider: { nome: "Felipe Cardoso", email: "felipe@aluno.amf.edu.br", curso: "Sistemas de Informação", semestre: 1, telefone: "(54) 99808-9900" },
-    integrantes: [],
-    mentor: "ricardo@amf.edu.br",
-    tarefas: [],
     anotacoes: [],
   },
 ];
 
-async function seedDemo(adminId: string, etapaPorNumero: Map<number, string>) {
-  const jaExiste = await prisma.usuario.findUnique({ where: { email: EQUIPES_DEMO[0].lider.email } });
+// --- Arquivo real para as entregas ------------------------------------------
+
+function escaparPdf(texto: string): string {
+  return texto.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+/**
+ * PDF de uma página, válido, só com texto. Assim a entrega de demonstração
+ * tem um arquivo de verdade para o mentor baixar (RF-14) — sem depender de
+ * binários no repositório.
+ */
+function pdfSimples(titulo: string, linhas: string[]): Buffer {
+  const conteudo = [
+    "BT",
+    "/F1 18 Tf 56 780 Td",
+    `(${escaparPdf(titulo)}) Tj`,
+    "/F1 11 Tf 0 -30 Td 16 TL",
+    ...linhas.map((linha) => `(${escaparPdf(linha)}) '`),
+    "ET",
+  ].join("\n");
+  const objetos = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${Buffer.byteLength(conteudo, "latin1")} >>\nstream\n${conteudo}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+  ];
+
+  let corpo = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objetos.forEach((objeto, i) => {
+    offsets.push(Buffer.byteLength(corpo, "latin1"));
+    corpo += `${i + 1} 0 obj\n${objeto}\nendobj\n`;
+  });
+  const inicioXref = Buffer.byteLength(corpo, "latin1");
+  corpo += `xref\n0 ${objetos.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) corpo += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  corpo += `trailer\n<< /Size ${objetos.length + 1} /Root 1 0 R >>\nstartxref\n${inicioXref}\n%%EOF\n`;
+  return Buffer.from(corpo, "latin1");
+}
+
+/**
+ * Grava o PDF em UPLOADS_DIR/demo e devolve o caminho relativo (o que vai para
+ * o banco). Se a pasta não for gravável (volume montado com outro dono, por
+ * exemplo), avisa e segue: o cenário fica completo e só o download desse
+ * anexo responde "arquivo não disponível" — o deploy nunca cai por isso.
+ */
+function gravarArquivoDemo(nome: string, titulo: string, linhas: string[]): { caminho: string; tamanhoBytes: number } {
+  const pdf = pdfSimples(titulo, linhas);
+  const pasta = path.join(env.uploadsDir, "demo");
+  try {
+    fs.mkdirSync(pasta, { recursive: true });
+    fs.writeFileSync(path.join(pasta, nome), pdf);
+  } catch (erro) {
+    console.warn(
+      `[seed] AVISO: não consegui gravar ${path.join(pasta, nome)} (${erro instanceof Error ? erro.message : erro}). ` +
+        "Confira a permissão de UPLOADS_DIR; o download desse anexo vai falhar até lá.",
+    );
+  }
+  return { caminho: `demo/${nome}`, tamanhoBytes: pdf.length };
+}
+
+// --- Registro de notificações já enviadas -------------------------------------
+
+type Tx = Prisma.TransactionClient;
+interface Pessoa {
+  id: string;
+  nome: string;
+  email: string;
+}
+
+/**
+ * Grava em `notificacoes` um e-mail que o sistema teria enviado naquela data,
+ * com a MESMA chave de idempotência que o serviço usa — é assim que a tabela
+ * responde "isso já foi enviado?" (RF-18/RF-19) e o job nunca duplica o aviso.
+ */
+async function registrarEnvio(
+  tx: Tx,
+  destinatarios: Pessoa[],
+  tipo: TipoNotificacao,
+  em: Date,
+  montar: (pessoa: Pessoa) => { modelo: ModeloEmail; chave: string; equipeId?: string; tarefaId?: string },
+) {
+  for (const pessoa of destinatarios) {
+    const { modelo, chave, equipeId, tarefaId } = montar(pessoa);
+    await tx.notificacao.create({
+      data: {
+        tipo,
+        destinatarioId: pessoa.id,
+        emailDestino: pessoa.email,
+        assunto: modelo.assunto,
+        corpo: modelo.html,
+        chaveIdempotencia: chave,
+        status: "ENVIADA",
+        tentativas: 1,
+        enviadaEm: em,
+        equipeId: equipeId ?? null,
+        tarefaId: tarefaId ?? null,
+        criadoEm: em,
+      },
+    });
+  }
+}
+
+async function auditar(tx: Tx, usuarioId: string | null, acao: string, entidade: string, entidadeId: string, detalhes: Prisma.InputJsonValue, em: Date) {
+  await tx.registroAuditoria.create({ data: { usuarioId, acao, entidade, entidadeId, detalhes, criadoEm: em } });
+}
+
+// --- Montagem do cenário --------------------------------------------------------
+
+async function seedDemo(admin: Pessoa) {
+  const jaExiste = await prisma.usuario.findUnique({ where: { email: EQUIPES_DEMO[0]!.lider.email } });
   if (jaExiste) {
-    log("dados de demonstração já existem — pulando (use `npm run db:reset` para recriar)");
+    log("cenário de demonstração já existe — mantido como está (use `npm run db:reset` para recriar do zero)");
     return;
   }
 
   const cursos = new Map((await prisma.curso.findMany()).map((c) => [c.nome, c.id]));
   const areas = new Map((await prisma.areaIdeia.findMany()).map((a) => [a.nome, a.id]));
   const etapasPadrao = await prisma.etapaPadrao.findMany({ orderBy: { numero: "asc" } });
-  const modelos = await prisma.modeloTarefa.findMany();
+  const modelos = await prisma.modeloTarefa.findMany({ include: { etapaPadrao: { select: { numero: true } } } });
 
   const senhaAluno = await bcrypt.hash("Aluno@123", BCRYPT_ROUNDS);
   const senhaMentor = await bcrypt.hash("Mentor@123", BCRYPT_ROUNDS);
 
-  // Mentores (RF-03)
-  const mentorPorEmail = new Map<string, string>();
+  // Mentores (RF-03) — cadastrados pelo admin antes das equipes chegarem.
+  const mentorPorEmail = new Map<string, Pessoa>();
   for (const m of MENTORES) {
     const mentor = await prisma.usuario.upsert({
       where: { email: m.email },
-      update: {},
+      update: { perfil: "MENTOR", ativo: true },
       create: {
         nome: m.nome,
         email: m.email,
         perfil: "MENTOR",
         senhaHash: senhaMentor,
-        consentimentoLgpdEm: diasAtras(300),
+        telefone: m.telefone,
+        consentimentoLgpdEm: diasAtras(40),
+        criadoEm: diasAtras(40),
       },
+      select: { id: true, nome: true, email: true },
     });
-    mentorPorEmail.set(m.email, mentor.id);
+    mentorPorEmail.set(m.email, mentor);
   }
-  log(`mentores: ${MENTORES.length}`);
+  log(`mentores: ${MENTORES.length} (${MENTORES.map((m) => m.nome.split(" ")[0]).join(", ")})`);
 
   for (const eq of EQUIPES_DEMO) {
-    const criadaEm = diasAtras(eq.criadaHa);
+    const cadastradaEm = diasAtras(eq.cadastradaHa, 14, 30);
+    const mentor = mentorPorEmail.get(eq.mentor)!;
 
-    const criarAluno = (p: PessoaDemo) =>
-      prisma.usuario.create({
-        data: {
-          nome: p.nome,
-          email: p.email,
-          perfil: "ALUNO",
-          senhaHash: senhaAluno,
-          telefone: p.telefone,
-          semestre: p.semestre,
-          cursoId: cursos.get(p.curso),
-          consentimentoLgpdEm: criadaEm,
-          criadoEm: criadaEm,
-        },
-      });
+    // Arquivos das entregas ficam fora da transação (disco, não banco).
+    const arquivos = new Map<string, { caminho: string; tamanhoBytes: number }>();
+    for (const t of eq.tarefas) {
+      if (t.entrega) {
+        arquivos.set(t.entrega.arquivo, gravarArquivoDemo(t.entrega.arquivo, `${eq.nome} — ${t.modelo}`, t.entrega.conteudo));
+      }
+    }
 
-    const lider = await criarAluno(eq.lider);
-    const integrantes: Awaited<ReturnType<typeof criarAluno>>[] = [];
-    for (const p of eq.integrantes) integrantes.push(await criarAluno(p));
+    await prisma.$transaction(
+      async (tx) => {
+        // Alunos (RF-05): líder e integrantes já com senha definida (RF-02).
+        const criarAluno = (p: PessoaDemo) =>
+          tx.usuario.create({
+            data: {
+              nome: p.nome,
+              email: p.email,
+              perfil: "ALUNO",
+              senhaHash: senhaAluno,
+              telefone: p.telefone,
+              semestre: p.semestre,
+              cursoId: p.curso ? cursos.get(p.curso) : undefined,
+              consentimentoLgpdEm: cadastradaEm,
+              criadoEm: cadastradaEm,
+            },
+            select: { id: true, nome: true, email: true },
+          });
+        const lider = await criarAluno(eq.lider);
+        const integrantes: Pessoa[] = [lider];
+        for (const p of eq.integrantes) integrantes.push(await criarAluno(p));
 
-    // Equipe + jornada (cópia das 6 etapas padrão) em uma transação, como o
-    // serviço de cadastro fará (RF-05).
-    const equipe = await prisma.$transaction(async (tx) => {
-      const equipe = await tx.equipe.create({
-        data: {
-          nome: eq.nome,
-          descricao: eq.descricao,
-          areaId: areas.get(eq.area)!,
-          estagioIdeia: eq.estagioIdeia,
-          comoConheceu: eq.comoConheceu,
-          periodoIngresso: periodoDe(criadaEm),
-          liderId: lider.id,
-          criadoEm: criadaEm,
-          integrantes: {
-            create: [lider, ...integrantes].map((u) => ({ usuarioId: u.id, entrouEm: criadaEm })),
+        // Equipe com o líder (Q1: um só) e a jornada copiada das 6 etapas padrão.
+        const equipe = await tx.equipe.create({
+          data: {
+            nome: eq.nome,
+            descricao: eq.descricao,
+            areaId: areas.get(eq.area)!,
+            estagioIdeia: eq.estagioIdeia,
+            comoConheceu: eq.comoConheceu,
+            periodoIngresso: periodoDe(cadastradaEm),
+            liderId: lider.id,
+            criadoEm: cadastradaEm,
+            integrantes: { create: integrantes.map((u) => ({ usuarioId: u.id, entrouEm: cadastradaEm })) },
+            etapas: {
+              create: etapasPadrao.map((ep) => ({
+                ordem: ep.numero,
+                etapaPadraoId: ep.id,
+                nome: ep.nome,
+                descricao: ep.descricao,
+                criadoEm: cadastradaEm,
+              })),
+            },
           },
-          mentores: { create: { mentorId: mentorPorEmail.get(eq.mentor)!, atribuidoEm: diasAtras(eq.criadaHa - 2) } },
-        },
-      });
+          include: { etapas: { include: { etapaPadrao: { select: { numero: true } } } } },
+        });
+        const etapaPorNumero = new Map(equipe.etapas.map((e) => [e.ordem, e]));
+        const etapa1 = etapaPorNumero.get(1)!;
+        const etapa2 = etapaPorNumero.get(2)!;
 
-      const etapas = [];
-      for (const ep of etapasPadrao) {
-        etapas.push(
-          await tx.etapaEquipe.create({
+        await tx.historicoEtapa.create({
+          data: { equipeId: equipe.id, paraEtapaId: etapa1.id, direcao: "INICIO", alteradoPorId: lider.id, criadoEm: cadastradaEm },
+        });
+        await registrarEnvio(tx, [admin], "NOVO_CADASTRO", cadastradaEm, (pessoa) => ({
+          modelo: emailNovoCadastro(pessoa.nome, eq.nome, lider.nome, eq.area, equipe.id),
+          chave: `NOVO_CADASTRO:equipe:${equipe.id}:usuario:${pessoa.id}`,
+          equipeId: equipe.id,
+        }));
+        await auditar(tx, lider.id, "EQUIPE_CADASTRADA", "equipe", equipe.id, { nome: eq.nome, integrantes: integrantes.length }, cadastradaEm);
+
+        // Mentor atribuído pelo admin no dia seguinte (RF-06).
+        const atribuidoEm = diasAtras(eq.cadastradaHa - 1, 10);
+        await tx.mentorEquipe.create({ data: { equipeId: equipe.id, mentorId: mentor.id, atribuidoEm } });
+        await auditar(tx, admin.id, "EQUIPE_MENTOR_ATRIBUIDO", "equipe", equipe.id, { mentorId: mentor.id }, atribuidoEm);
+
+        const acompanham: Pessoa[] = mentor.email === admin.email ? [admin] : [mentor, admin];
+
+        // Tarefas (RF-12) com lembretes (RF-17), entregas (RF-14/16), avaliações (RF-15) e os e-mails de cada passo.
+        for (const t of eq.tarefas) {
+          const modelo = modelos.find((m) => m.titulo === t.modelo && m.etapaPadrao.numero === t.etapa);
+          if (!modelo) throw new Error(`Modelo de tarefa "${t.modelo}" (etapa ${t.etapa}) não encontrado.`);
+          const criadaEm = diasAtras(t.criadaHa, 10);
+          const prazo = prazoEm(t.prazoEmDias);
+
+          const tarefa = await tx.tarefa.create({
             data: {
               equipeId: equipe.id,
-              ordem: ep.numero,
-              etapaPadraoId: ep.id,
-              nome: ep.nome,
-              descricao: ep.descricao,
+              etapaEquipeId: etapaPorNumero.get(t.etapa)!.id,
+              modeloTarefaId: modelo.id,
+              titulo: modelo.titulo,
+              descricao: modelo.descricao,
+              prazo,
+              status: t.status,
+              obrigatoria: modelo.obrigatoria,
+              criadoPorId: mentor.id,
               criadoEm: criadaEm,
             },
-          }),
-        );
-      }
-
-      // Histórico (RF-08/RF-09): início na etapa 1 e um avanço por etapa concluída.
-      await tx.historicoEtapa.create({
-        data: {
-          equipeId: equipe.id,
-          paraEtapaId: etapas[0].id,
-          direcao: "INICIO",
-          criadoEm: criadaEm,
-        },
-      });
-      for (const [i, ha] of eq.concluidasHa.entries()) {
-        await tx.historicoEtapa.create({
-          data: {
+          });
+          await registrarEnvio(tx, integrantes, "NOVA_TAREFA", criadaEm, (pessoa) => ({
+            modelo: emailNovaTarefa(pessoa.nome, eq.nome, tarefa.titulo, prazo, tarefa.obrigatoria),
+            chave: `NOVA_TAREFA:tarefa:${tarefa.id}:usuario:${pessoa.id}`,
             equipeId: equipe.id,
-            deEtapaId: etapas[i].id,
-            paraEtapaId: etapas[i + 1].id,
-            direcao: "AVANCO",
-            alteradoPorId: mentorPorEmail.get(eq.mentor),
-            criadoEm: diasAtras(ha),
-          },
-        });
-      }
-
-      const etapaAtual = etapas[eq.etapaAtual - 1];
-      return tx.equipe.update({
-        where: { id: equipe.id },
-        data: {
-          etapaAtualId: etapaAtual.id,
-          statusJornada: eq.pronta ? "PRONTA_INOVAMF" : "EM_ANDAMENTO",
-          prontaEm: eq.pronta ? diasAtras(30) : null,
-        },
-        include: { etapas: true },
-      });
-    });
-
-    const etapaEquipePorNumero = new Map(equipe.etapas.map((e) => [e.ordem, e.id]));
-    const mentorId = mentorPorEmail.get(eq.mentor)!;
-
-    // Tarefas, entregas versionadas, avaliações e lembretes
-    for (const t of eq.tarefas) {
-      const modelo = modelos.find(
-        (m) => m.titulo === t.titulo && m.etapaPadraoId === etapaPorNumero.get(t.etapa),
-      );
-      const prazo = diasAFrente(t.prazoEmDias);
-      const tarefa = await prisma.tarefa.create({
-        data: {
-          equipeId: equipe.id,
-          etapaEquipeId: etapaEquipePorNumero.get(t.etapa)!,
-          modeloTarefaId: modelo?.id,
-          titulo: t.titulo,
-          descricao: t.descricao,
-          prazo,
-          status: STATUS_MAP[t.status],
-          obrigatoria: t.obrigatoria ?? true,
-          criadoPorId: mentorId,
-          criadoEm: diasAtras(Math.max(t.prazoEmDias * -1 + 14, 14)),
-        },
-      });
-
-      let ultimaEntregaId: string | null = null;
-      let versao = 0;
-      for (const arq of t.entregas ?? []) {
-        versao += 1;
-        const entrega = await prisma.entrega.create({
-          data: {
             tarefaId: tarefa.id,
-            versao,
-            enviadoPorId: lider.id,
-            enviadoEm: diasAtras(arq.enviadoHa),
-            anexos: {
-              create: {
-                tipo: "ARQUIVO",
-                nomeOriginal: arq.nome,
-                caminhoArmazenamento: `demo/${equipe.id}/${versao}-${arq.nome}`,
-                tamanhoBytes: arq.tamanhoBytes,
-                mimeType: arq.mimeType,
+          }));
+          await auditar(tx, mentor.id, "TAREFA_CRIADA", "tarefa", tarefa.id, { equipeId: equipe.id, titulo: tarefa.titulo, obrigatoria: tarefa.obrigatoria, lembretes: [3, 1] }, criadaEm);
+
+          // Lembretes padrão (3 e 1 dias antes, às 9h). Os que venceram enquanto a
+          // tarefa ainda estava aberta (antes da entrega) constam como enviados pelo job.
+          const entregueEm = t.entrega ? diasAtras(t.entrega.ha, 16, 20) : null;
+          for (const diasAntes of [3, 1]) {
+            const lembrarEm = dataDoLembrete(prazo, diasAntes);
+            if (lembrarEm.getTime() <= criadaEm.getTime()) continue;
+            const enviado = lembrarEm.getTime() <= Date.now() && (entregueEm === null || lembrarEm.getTime() < entregueEm.getTime());
+            const lembrete = await tx.lembreteTarefa.create({
+              data: { tarefaId: tarefa.id, diasAntes, lembrarEm, enviadoEm: enviado ? lembrarEm : null, criadoEm: criadaEm },
+            });
+            if (enviado) {
+              await registrarEnvio(tx, integrantes, "PRAZO_PROXIMO", lembrarEm, (pessoa) => ({
+                modelo: emailPrazoProximo(pessoa.nome, eq.nome, tarefa.titulo, prazo, diasAntes),
+                chave: `PRAZO_PROXIMO:lembrete:${lembrete.id}:usuario:${pessoa.id}`,
+                equipeId: equipe.id,
+                tarefaId: tarefa.id,
+              }));
+            }
+          }
+
+          if (t.entrega && entregueEm) {
+            const enviadaEm = entregueEm;
+            const arquivo = arquivos.get(t.entrega.arquivo)!;
+            const entrega = await tx.entrega.create({
+              data: {
+                tarefaId: tarefa.id,
+                versao: 1,
+                enviadoPorId: lider.id,
+                observacao: t.entrega.observacao,
+                enviadoEm: enviadaEm,
+                anexos: {
+                  create: {
+                    tipo: "ARQUIVO",
+                    nomeOriginal: t.entrega.arquivo,
+                    caminhoArmazenamento: arquivo.caminho,
+                    tamanhoBytes: arquivo.tamanhoBytes,
+                    mimeType: "application/pdf",
+                    criadoEm: enviadaEm,
+                  },
+                },
               },
-            },
-          },
-        });
-        ultimaEntregaId = entrega.id;
-      }
-      if (t.link) {
-        versao += 1;
-        const entrega = await prisma.entrega.create({
-          data: {
-            tarefaId: tarefa.id,
-            versao,
-            enviadoPorId: lider.id,
-            enviadoEm: diasAtras(t.link.enviadoHa),
-            anexos: { create: { tipo: "LINK", nomeOriginal: t.link.titulo, url: t.link.url } },
-          },
-        });
-        ultimaEntregaId = entrega.id;
-      }
+            });
+            await registrarEnvio(tx, acompanham, "ENTREGA_RECEBIDA", enviadaEm, (pessoa) => ({
+              modelo: emailEntregaRecebida(pessoa.nome, eq.nome, tarefa.titulo, 1, lider.nome, equipe.id),
+              chave: `ENTREGA_RECEBIDA:entrega:${entrega.id}:usuario:${pessoa.id}`,
+              equipeId: equipe.id,
+              tarefaId: tarefa.id,
+            }));
+            await auditar(tx, lider.id, "TAREFA_ENTREGUE", "entrega", entrega.id, { tarefaId: tarefa.id, versao: 1, arquivos: 1, link: false }, enviadaEm);
 
-      if (t.comentarioAvaliacao) {
-        await prisma.comentarioTarefa.create({
-          data: {
-            tarefaId: tarefa.id,
-            entregaId: ultimaEntregaId,
-            autorId: mentorId,
-            decisao: t.status === "aprovada" ? "APROVADA" : "REPROVADA",
-            conteudo: t.comentarioAvaliacao,
-          },
-        });
-      }
+            if (t.avaliacao) {
+              const avaliadaEm = diasAtras(t.avaliacao.ha, 11);
+              const aprovada = t.avaliacao.decisao === "APROVADA";
+              await tx.comentarioTarefa.create({
+                data: { tarefaId: tarefa.id, entregaId: entrega.id, autorId: mentor.id, decisao: t.avaliacao.decisao, conteudo: t.avaliacao.comentario, criadoEm: avaliadaEm },
+              });
+              await registrarEnvio(tx, integrantes, "ENTREGA_AVALIADA", avaliadaEm, (pessoa) => ({
+                modelo: emailEntregaAvaliada(pessoa.nome, eq.nome, tarefa.titulo, aprovada, t.avaliacao!.comentario),
+                chave: `ENTREGA_AVALIADA:entrega:${entrega.id}:decisao:${aprovada ? "APPROVED" : "REJECTED"}:usuario:${pessoa.id}`,
+                equipeId: equipe.id,
+                tarefaId: tarefa.id,
+              }));
+              await auditar(tx, mentor.id, aprovada ? "TAREFA_APROVADA" : "TAREFA_REPROVADA", "tarefa", tarefa.id, { entregaId: entrega.id, versao: 1 }, avaliadaEm);
+            }
+          }
 
-      // Lembrete "3 dias antes" nas tarefas ainda abertas (RF-17)
-      if (["pendente", "em_andamento", "reprovada"].includes(t.status)) {
-        const lembrarEm = new Date(prazo);
-        lembrarEm.setDate(lembrarEm.getDate() - 3);
-        lembrarEm.setHours(9, 0, 0, 0);
-        await prisma.lembreteTarefa.create({
-          data: { tarefaId: tarefa.id, diasAntes: 3, lembrarEm },
-        });
-      }
-    }
+          // Venceu sem entrega: o job (RN-04) marcou ATRASADA 10 min depois do prazo e avisou todo mundo.
+          if (t.status === "ATRASADA") {
+            const marcadaEm = new Date(prazo.getTime() + 10 * 60 * 1000);
+            await registrarEnvio(tx, integrantes, "PRAZO_VENCIDO", marcadaEm, (pessoa) => ({
+              modelo: emailPrazoVencido(pessoa.nome, eq.nome, tarefa.titulo, prazo),
+              chave: `PRAZO_VENCIDO:tarefa:${tarefa.id}:prazo:${prazo.getTime()}:usuario:${pessoa.id}`,
+              equipeId: equipe.id,
+              tarefaId: tarefa.id,
+            }));
+            await registrarEnvio(tx, acompanham, "TAREFA_ATRASADA", marcadaEm, (pessoa) => ({
+              modelo: emailTarefaAtrasada(pessoa.nome, eq.nome, tarefa.titulo, prazo, equipe.id),
+              chave: `TAREFA_ATRASADA:tarefa:${tarefa.id}:prazo:${prazo.getTime()}:usuario:${pessoa.id}`,
+              equipeId: equipe.id,
+              tarefaId: tarefa.id,
+            }));
+            await auditar(tx, null, "TAREFA_MARCADA_ATRASADA", "tarefa", tarefa.id, { prazo, equipeId: equipe.id }, marcadaEm);
+          }
+        }
 
-    for (const a of eq.anotacoes) {
-      await prisma.anotacaoMentoria.create({
-        data: {
-          equipeId: equipe.id,
-          autorId: mentorPorEmail.get(a.autor),
-          conteudo: a.conteudo,
-          criadoEm: diasAtras(a.ha),
-        },
-      });
-    }
+        // Etapa 1 aprovada → o mentor avançou a equipe para a etapa 2 (RF-09, RN-01).
+        let etapaAtualId = etapa1.id;
+        if (eq.avancouParaEtapa2Ha !== undefined) {
+          const avancouEm = diasAtras(eq.avancouParaEtapa2Ha, 11, 15);
+          await tx.historicoEtapa.create({
+            data: { equipeId: equipe.id, deEtapaId: etapa1.id, paraEtapaId: etapa2.id, direcao: "AVANCO", alteradoPorId: mentor.id, criadoEm: avancouEm },
+          });
+          await auditar(
+            tx,
+            mentor.id,
+            "EQUIPE_ETAPA_ALTERADA",
+            "equipe",
+            equipe.id,
+            { de: `1. ${etapa1.nome}`, para: `2. ${etapa2.nome}`, direcao: "avanco", forcado: false, obrigatoriasPendentes: 0, motivo: null },
+            avancouEm,
+          );
+          etapaAtualId = etapa2.id;
+        }
+        await tx.equipe.update({ where: { id: equipe.id }, data: { etapaAtualId } });
 
-    // Registro do e-mail que o cadastro dispara ao admin (RF-05/RF-19),
-    // já com a chave de idempotência no formato que o serviço usará.
-    await prisma.notificacao.create({
-      data: {
-        tipo: "NOVO_CADASTRO",
-        destinatarioId: adminId,
-        emailDestino: (await prisma.usuario.findUniqueOrThrow({ where: { id: adminId } })).email,
-        assunto: `Nova ideia cadastrada: ${eq.nome}`,
-        corpo: `${eq.lider.nome} cadastrou a ideia "${eq.nome}" no InfoHub.`,
-        chaveIdempotencia: `NOVO_CADASTRO:equipe:${equipe.id}:usuario:${adminId}`,
-        status: "ENVIADA",
-        tentativas: 1,
-        enviadaEm: criadaEm,
-        equipeId: equipe.id,
-        criadoEm: criadaEm,
+        for (const a of eq.anotacoes) {
+          await tx.anotacaoMentoria.create({
+            data: { equipeId: equipe.id, autorId: mentor.id, conteudo: a.conteudo, criadoEm: diasAtras(a.ha, 17) },
+          });
+        }
       },
-    });
+      { timeout: 60_000 },
+    );
 
-    await prisma.registroAuditoria.create({
-      data: {
-        usuarioId: lider.id,
-        acao: "EQUIPE_CADASTRADA",
-        entidade: "equipe",
-        entidadeId: equipe.id,
-        detalhes: { nome: eq.nome, integrantes: eq.integrantes.length + 1 },
-        criadoEm: criadaEm,
-      },
-    });
-
-    log(`equipe "${eq.nome}" (etapa ${eq.etapaAtual}, ${eq.tarefas.length} tarefas)`);
+    const etapa = eq.avancouParaEtapa2Ha !== undefined ? 2 : 1;
+    const atrasada = eq.tarefas.some((t) => t.status === "ATRASADA") ? ", com tarefa ATRASADA" : "";
+    log(`equipe "${eq.nome}": ${eq.integrantes.length + 1} integrantes, mentor ${mentor.nome}, etapa ${etapa}${atrasada}`);
   }
 }
 
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const { admin, etapaPorNumero } = await seedReferencia();
+  const { admin } = await seedReferencia();
 
-  if (process.env.SEED_DEMO === "true") {
-    await seedDemo(admin.id, etapaPorNumero);
-  } else {
-    log("SEED_DEMO != true — dados de demonstração não criados");
+  if (process.env.SEED_DEMO === "false") {
+    log("SEED_DEMO=false — cenário de demonstração não criado");
+    return;
   }
+  await seedDemo(admin);
 }
 
 main()
