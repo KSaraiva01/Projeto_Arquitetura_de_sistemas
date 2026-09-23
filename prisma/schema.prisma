@@ -97,11 +97,13 @@ enum TipoAnexo {
   @@map("tipo_anexo")
 }
 
-/// Tokens de uso único enviados por e-mail (RF-01 recuperação de senha e
-/// RF-02 primeiro acesso dos integrantes cadastrados pelo líder).
+/// Tokens de uso único enviados por e-mail (RF-01 recuperação de senha,
+/// RF-02 primeiro acesso dos integrantes cadastrados pelo líder e a
+/// confirmação do e-mail de quem se cadastra já com senha — o líder).
 enum TipoToken {
   ATIVACAO_CONTA
   RECUPERACAO_SENHA
+  CONFIRMACAO_EMAIL
 
   @@map("tipo_token")
 }
@@ -118,6 +120,7 @@ enum TipoNotificacao {
   LEMBRETE_MANUAL // → equipe: disparado pelo admin (RF-20)
   ATIVACAO_CONTA // → integrante: token de primeiro acesso (RF-02)
   RECUPERACAO_SENHA // → usuário: token de redefinição (RF-01)
+  CONFIRMACAO_EMAIL // → líder: link para confirmar o e-mail do cadastro
 
   @@map("tipo_notificacao")
 }
@@ -179,6 +182,11 @@ model Usuario {
   semestre  Int?    @db.SmallInt
   /// RF-03: admin pode desativar contas sem apagá-las.
   ativo     Boolean @default(true)
+
+  /// Quando a pessoa provou que o e-mail é dela: abrindo o link de
+  /// confirmação (líder, que já se cadastra com senha) ou definindo a senha
+  /// por um link de ativação/recuperação. Nulo = login recusado.
+  emailConfirmadoEm DateTime? @map("email_confirmado_em") @db.Timestamptz(6)
 
   /// RNF-02 (LGPD): quando o usuário aceitou o tratamento de dados.
   consentimentoLgpdEm DateTime? @map("consentimento_lgpd_em") @db.Timestamptz(6)
@@ -572,6 +580,10 @@ model Notificacao {
   tarefaId          String?           @map("tarefa_id") @db.Uuid
   criadoEm          DateTime          @default(now()) @map("criado_em") @db.Timestamptz(6)
   atualizadoEm      DateTime          @updatedAt @map("atualizado_em") @db.Timestamptz(6)
+
+  /// ID da mensagem devolvido pelo provedor (Resend) ou Message-ID (SMTP) —
+  /// é por ele que se acha o e-mail no painel da Resend. Nulo no driver console.
+  idMensagemProvedor String? @map("id_mensagem_provedor") @db.VarChar(255)
 
   destinatario Usuario? @relation(fields: [destinatarioId], references: [id], onDelete: SetNull)
   equipe       Equipe?  @relation(fields: [equipeId], references: [id], onDelete: SetNull)

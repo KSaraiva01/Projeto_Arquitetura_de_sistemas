@@ -2,7 +2,7 @@ import { env } from "../../config/env";
 import { Prisma, type TipoNotificacao } from "../../generated/prisma/client";
 import { prisma } from "../../lib/prisma";
 import type { Db } from "../../shared/auditoria";
-import { entregarEmail } from "../../shared/email/mailer";
+import { FalhaEnvioEmail, entregarEmail } from "../../shared/email/mailer";
 import type { ModeloEmail } from "../../shared/email/templates";
 
 /**
@@ -14,7 +14,10 @@ import type { ModeloEmail } from "../../shared/email/templates";
  *  - a tabela responde "isso já foi enviado?" — a `chave_idempotencia` é
  *    única, então o mesmo aviso nunca entra duas vezes (nota das RF-18/19);
  *  - se o servidor de e-mail estiver fora, o registro fica PENDENTE/FALHOU e o
- *    job reenvia com espera crescente (RNF-06);
+ *    job reenvia com espera crescente (RNF-06). Falha permanente (endereço
+ *    inválido, domínio não verificado na Resend) não é repetida;
+ *  - cada envio leva a chave `notificacao/<id>`: a Resend descarta a
+ *    repetição de um envio que ela já tinha aceitado (ex.: após um timeout);
  *  - a própria tabela é o registro de auditoria dos envios (RNF-05).
  */
 
@@ -35,7 +38,7 @@ export interface EnfileirarInput {
 }
 
 /** E-mails de segurança da conta não respeitam opt-out (RF-21). */
-const SEM_OPT_OUT = new Set<TipoNotificacao>(["ATIVACAO_CONTA", "RECUPERACAO_SENHA"]);
+const SEM_OPT_OUT = new Set<TipoNotificacao>(["ATIVACAO_CONTA", "RECUPERACAO_SENHA", "CONFIRMACAO_EMAIL"]);
 
 /**
  * Grava a notificação. Devolve o id, ou `null` quando ela já existia (mesma
@@ -186,10 +189,12 @@ export async function processarFila(limite = 50): Promise<RelatorioEnvio> {
 
     for (const notificacao of pendentes) {
       try {
-        await entregarEmail({
+        const { idMensagem } = await entregarEmail({
           para: notificacao.emailDestino,
           assunto: notificacao.assunto,
           html: notificacao.corpo,
+          chave: `notificacao/${notificacao.id}`,
+          categoria: notificacao.tipo,
         });
         await prisma.notificacao.update({
           where: { id: notificacao.id },
@@ -198,13 +203,15 @@ export async function processarFila(limite = 50): Promise<RelatorioEnvio> {
             enviadaEm: new Date(),
             tentativas: { increment: 1 },
             proximoEnvioEm: null,
+            idMensagemProvedor: idMensagem,
             erro: null,
           },
         });
         relatorio.enviadas += 1;
       } catch (error) {
         const tentativas = notificacao.tentativas + 1;
-        const esgotou = tentativas >= env.MAIL_MAX_ATTEMPTS;
+        const permanente = error instanceof FalhaEnvioEmail && error.permanente;
+        const esgotou = permanente || tentativas >= env.MAIL_MAX_ATTEMPTS;
         await prisma.notificacao.update({
           where: { id: notificacao.id },
           data: {
@@ -216,7 +223,7 @@ export async function processarFila(limite = 50): Promise<RelatorioEnvio> {
         });
         relatorio.falhas += 1;
         console.error(
-          `[email] falha ao enviar "${notificacao.assunto}" para ${notificacao.emailDestino} (tentativa ${tentativas}${esgotou ? ", desistindo" : ""}):`,
+          `[email] falha ao enviar "${notificacao.assunto}" para ${notificacao.emailDestino} (tentativa ${tentativas}${permanente ? ", falha permanente — não será reenviado" : esgotou ? ", desistindo" : ""}):`,
           error instanceof Error ? error.message : error,
         );
       }

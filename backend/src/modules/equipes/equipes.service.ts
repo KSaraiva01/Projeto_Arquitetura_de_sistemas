@@ -8,7 +8,7 @@ import { emailLembreteManual, emailNovoCadastro } from "../../shared/email/templ
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../../shared/errors";
 import { escopoEquipe, podeMentorar } from "../../shared/escopo";
 import type { UsuarioAutenticado } from "../../types/express";
-import { enviarAtivacaoConta } from "../auth/auth.service";
+import { enviarAtivacaoConta, enviarConfirmacaoEmail } from "../auth/auth.service";
 import {
   destinatariosAdmins,
   destinatariosDaEquipe,
@@ -623,6 +623,8 @@ async function cursoPorNome(nome: string, db: Db) {
 /**
  * Garante a conta de um aluno: reaproveita a existente (perfil ALUNO) ou
  * cria uma nova sem senha, que recebe o token de ativação por e-mail (RF-02).
+ * Com `senhaHash` (o líder, senha do formulário) não há ativação: quem chama
+ * envia o link de confirmação do e-mail.
  */
 async function garantirAluno(pessoa: Pessoa, equipeNome: string, db: Db, senhaHash: string | null = null) {
   const existente = await db.usuario.findUnique({ where: { email: pessoa.email } });
@@ -638,7 +640,7 @@ async function garantirAluno(pessoa: Pessoa, equipeNome: string, db: Db, senhaHa
 
   if (existente) {
     await garantirSemEquipeAtiva(existente.id, db);
-    if (existente.senhaHash === null) {
+    if (existente.senhaHash === null && senhaHash === null) {
       await enviarAtivacaoConta(existente, `Você foi incluído(a) na equipe "${equipeNome}" no InfoHub.`, db);
     }
     return { usuario: existente, criado: false };
@@ -664,9 +666,10 @@ async function garantirAluno(pessoa: Pessoa, equipeNome: string, db: Db, senhaHa
 
 /**
  * RF-02/RF-05 — o formulário inicial cria, em uma transação: a conta do
- * líder (com a senha do formulário), as contas dos colegas (sem senha +
- * token de ativação), a equipe na etapa 1 com a jornada copiada, o histórico
- * e o e-mail à coordenação. Os e-mails só saem depois do COMMIT.
+ * líder (com a senha do formulário + link de confirmação do e-mail), as
+ * contas dos colegas (sem senha + token de ativação), a equipe na etapa 1
+ * com a jornada copiada, o histórico e o e-mail à coordenação. Os e-mails só
+ * saem depois do COMMIT.
  */
 export async function cadastrarEquipe(input: RegisterTeamInput, ip: string | null) {
   const area = await prisma.areaIdeia.findFirst({ where: { id: input.team.areaId, ativo: true } });
@@ -695,6 +698,12 @@ export async function cadastrarEquipe(input: RegisterTeamInput, ip: string | nul
       // Conta criada por outro líder e nunca ativada: a senha do formulário passa a valer.
       await tx.usuario.update({ where: { id: lider.id }, data: { senhaHash, nome: input.leader.name, telefone: input.leader.phone } });
     }
+    // Validação do e-mail: a senha já vale, mas o login só abre depois do link de confirmação.
+    await enviarConfirmacaoEmail(
+      { id: lider.id, nome: input.leader.name, email: liderEmail },
+      `Recebemos o cadastro da ideia "${nomeEquipe}".`,
+      tx,
+    );
 
     const equipe = await tx.equipe.create({
       data: {
@@ -753,7 +762,7 @@ export async function cadastrarEquipe(input: RegisterTeamInput, ip: string | nul
     teamId: equipeId,
     leaderId: liderId,
     memberCount: colegas.length + 1,
-    message: "Ideia cadastrada! A equipe do InfoHub vai analisar sua proposta e entrar em contato.",
+    message: `Ideia cadastrada! Confirme seu e-mail pelo link que enviamos para ${liderEmail} para conseguir entrar. A equipe do InfoHub vai analisar sua proposta e entrar em contato.`,
   };
 }
 

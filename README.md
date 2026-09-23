@@ -54,6 +54,25 @@ container roda), `npm run typecheck`, `npm run jobs:run` (executa a rotina agend
 **Atenção:** o PostgreSQL da faculdade é compartilhado entre as duplas, cada uma no seu schema. Este projeto usa
 `infohub_losekann`; nunca aponte a `DATABASE_URL` para o schema `public`. Detalhes em [docs/banco-de-dados.md](docs/banco-de-dados.md).
 
+## E-mails (Resend)
+
+Todo e-mail entra primeiro na fila `notificacoes` e sai em segundo plano (e pela rotina agendada). Com
+`MAIL_DRIVER=resend` o envio usa o SDK oficial da Resend: cada e-mail leva a chave de idempotência `notificacao/<id>`
+(repetir um envio nunca duplica o e-mail), o ID devolvido pela Resend fica em `notificacoes.id_mensagem_provedor`
+e só falhas passageiras (rede, limite de envio, 5xx) voltam para a fila. Endereço inválido ou domínio não
+verificado viram `FALHOU` na hora, com o motivo em `erro`.
+
+1. Crie uma API key em [resend.com/api-keys](https://resend.com/api-keys) (permissão *Sending access*) → `RESEND_API_KEY`.
+2. Verifique um domínio em [resend.com/domains](https://resend.com/domains) e use-o no remetente:
+   `MAIL_FROM="InfoHub <nao-responda@seu-dominio.com>"`. Sem domínio próprio, `MAIL_FROM="InfoHub <onboarding@resend.dev>"`
+   serve só para testes: a Resend entrega apenas para o e-mail dono da conta.
+3. `MAIL_DRIVER=resend` e `APP_URL` com a URL pública — é ela que vai nos links dos e-mails.
+
+**Validação do e-mail.** O líder cria a senha no cadastro, mas só entra depois de abrir o link de confirmação
+(`/confirmar-email?token=…`, válido por `ACTIVATION_EXPIRES_IN_HOURS`); até lá o login responde `EMAIL_NOT_CONFIRMED`
+e a tela oferece reenviar o link. Integrantes, mentores e admins confirmam o e-mail ao criar a senha pelo link de
+ativação. Contas que já existiam antes dessa regra (e as do seed) contam como confirmadas.
+
 ## G1 — o que é avaliado e como o projeto atende
 
 | Requisito de entrega (slide "G1: o que será avaliado")                     | Como está aqui |
@@ -89,7 +108,7 @@ Um único resource (Application), apontando para este repositório na branch `in
 | Install / Build / Start command               | Vazios — vêm do Dockerfile (`CMD npm start`). **Não** use `npm run dev` em produção. |
 | Pre-deployment / Post-deployment              | Vazios. Migrations e seed já rodam dentro do `npm start`; não repita aqui. |
 | Networking → **Ports exposes**                | `3000` (porta interna do container, a mesma do Dockerfile). Se o acesso for por IP:porta em vez de domínio, acrescente um *Port mapping* `<porta externa>:3000`, ex.: `3008:3000`. |
-| Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` (`console` se não houver SMTP; senão `smtp` + `SMTP_*`). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR` e `TZ` já vêm do Dockerfile. |
+| Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` (`resend` + `RESEND_API_KEY` + `MAIL_FROM` — ver [E-mails](#e-mails-resend); `console` só imprime no log). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR` e `TZ` já vêm do Dockerfile. |
 | Storages                                      | **Volume Mount** com destino `/app/uploads` (arquivos das entregas — inclusive os PDFs do cenário). |
 | Healthchecks (opcional)                       | `GET /api/health` na porta `3000`. A imagem já traz um `HEALTHCHECK` equivalente. |
 

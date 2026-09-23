@@ -112,7 +112,8 @@ export default function CadastroPage() {
             Sua ideia foi cadastrada com sucesso. A equipe do InfoHub irá analisar sua proposta e entrar em contato em breve.
           </p>
           <p className="text-sm text-muted-light mb-6">
-            Você receberá um e-mail de confirmação em <strong className="text-foreground">{formData.email}</strong>
+            Enviamos um link de confirmação para <strong className="text-foreground">{formData.email}</strong>.
+            Confirme seu e-mail para conseguir entrar.
           </p>
           <Link
             href="/"

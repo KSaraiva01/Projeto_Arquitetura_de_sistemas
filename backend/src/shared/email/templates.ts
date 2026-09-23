@@ -75,6 +75,21 @@ export function emailAtivacaoConta(nome: string, token: string, contexto: string
   };
 }
 
+/** Validação do e-mail — quem se cadastra já com senha (o líder) confirma que o endereço é seu. */
+export function emailConfirmacaoEmail(nome: string, token: string, contexto: string): ModeloEmail {
+  const url = `${env.APP_URL}/confirmar-email?token=${encodeURIComponent(token)}`;
+  return {
+    assunto: "Confirme seu e-mail — InfoHub",
+    html: layout(
+      "Confirme seu e-mail",
+      p(`Olá, ${escapar(primeiroNome(nome))}!`) +
+        p(`${escapar(contexto)} Para entrar no InfoHub, confirme que este endereço é seu pelo link abaixo — ele vale por <strong>${env.ACTIVATION_EXPIRES_IN_HOURS} horas</strong>.`) +
+        botao("Confirmar meu e-mail", url) +
+        p(`<span style="font-size:13px;color:#6b7280;">Se o link expirar, tente entrar no InfoHub e peça um novo. Se não foi você quem se cadastrou, ignore este e-mail.</span>`),
+    ),
+  };
+}
+
 /** RF-01 — recuperação de senha. */
 export function emailRecuperacaoSenha(nome: string, token: string): ModeloEmail {
   const url = `${env.APP_URL}/definir-senha?token=${encodeURIComponent(token)}`;

@@ -38,6 +38,15 @@ export const resetPasswordSchema = z.object({
   password: senhaSchema,
 });
 
+/** Validação do e-mail: o token vem do link `/confirmar-email?token=…`. */
+export const confirmEmailSchema = z.object({
+  token: z.string().min(1, "Token ausente."),
+});
+
+export const resendConfirmationSchema = z.object({
+  email: emailSchema,
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Informe sua senha atual."),
@@ -78,6 +87,8 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type RefreshInput = z.infer<typeof refreshSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ConfirmEmailInput = z.infer<typeof confirmEmailSchema>;
+export type ResendConfirmationInput = z.infer<typeof resendConfirmationSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 export type NotificationPreferencesInput = z.infer<typeof notificationPreferencesSchema>;

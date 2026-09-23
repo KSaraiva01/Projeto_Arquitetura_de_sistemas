@@ -5,11 +5,13 @@ import { contextoDe, getBody } from "../../shared/middlewares/validar";
 import { anonimizarUsuario } from "../usuarios/usuarios.service";
 import type {
   ChangePasswordInput,
+  ConfirmEmailInput,
   DeleteAccountInput,
   ForgotPasswordInput,
   LoginInput,
   NotificationPreferencesInput,
   RefreshInput,
+  ResendConfirmationInput,
   ResetPasswordInput,
 } from "./auth.schemas";
 import * as service from "./auth.service";
@@ -81,6 +83,25 @@ export const resetPassword: RequestHandler = async (req, res) => {
       tipo === "ATIVACAO_CONTA"
         ? "Conta ativada! Faça login com a senha que você acabou de criar."
         : "Senha redefinida com sucesso. Faça login com a nova senha.",
+  });
+};
+
+export const confirmEmail: RequestHandler = async (req, res) => {
+  const resultado = await service.confirmarEmail(getBody<ConfirmEmailInput>(req).token, contextoDe(req));
+  res.status(200).json({
+    alreadyConfirmed: resultado === "JA_CONFIRMADO",
+    message:
+      resultado === "JA_CONFIRMADO"
+        ? "Seu e-mail já estava confirmado. É só entrar com seu e-mail e senha."
+        : "E-mail confirmado! Agora você já pode entrar no InfoHub.",
+  });
+};
+
+export const resendConfirmation: RequestHandler = async (req, res) => {
+  await service.reenviarConfirmacao(getBody<ResendConfirmationInput>(req).email, contextoDe(req));
+  // Resposta idêntica exista ou não a conta.
+  res.status(202).json({
+    message: "Se houver uma conta aguardando confirmação com este e-mail, enviaremos um novo link em instantes.",
   });
 };
 

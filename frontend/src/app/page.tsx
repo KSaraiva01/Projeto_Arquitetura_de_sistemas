@@ -48,6 +48,9 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
+  // Login recusado porque o e-mail ainda não foi confirmado: oferece um novo link.
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [resending, setResending] = useState(false);
 
   // Quem já tem sessão ativa vai direto para o painel do seu perfil.
   useEffect(() => {
@@ -58,6 +61,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setNotice("");
+    setNeedsConfirmation(false);
 
     if (!email || !password) {
       setError("Preencha e-mail e senha.");
@@ -77,13 +81,33 @@ export default function LoginPage() {
           ? err.message
           : "Não foi possível conectar à API. Verifique se o backend está rodando.",
       );
+      setNeedsConfirmation(err instanceof ApiError && err.code === "EMAIL_NOT_CONFIRMED");
       setSubmitting(false);
+    }
+  }
+
+  async function handleResendConfirmation() {
+    setResending(true);
+    try {
+      const result = await api.resendConfirmation(email);
+      setError("");
+      setNeedsConfirmation(false);
+      setNotice(result.message);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : "Não foi possível reenviar o e-mail de confirmação.",
+      );
+    } finally {
+      setResending(false);
     }
   }
 
   async function handleForgotPassword() {
     setError("");
     setNotice("");
+    setNeedsConfirmation(false);
 
     if (!email) {
       setError("Informe seu e-mail para receber o link de redefinição.");
@@ -292,6 +316,17 @@ export default function LoginPage() {
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   {error}
                 </p>
+              )}
+              {needsConfirmation && (
+                <button
+                  type="button"
+                  onClick={() => void handleResendConfirmation()}
+                  disabled={resending}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary-dark disabled:opacity-60"
+                >
+                  {resending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {resending ? "Enviando..." : "Reenviar e-mail de confirmação"}
+                </button>
               )}
               {notice && (
                 <p key={notice} role="status" className="animate-rise text-sm text-success">

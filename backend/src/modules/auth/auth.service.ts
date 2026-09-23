@@ -10,7 +10,7 @@ import {
   type ApiJourneyStatus,
   type ApiRole,
 } from "../../shared/dto";
-import { emailAtivacaoConta, emailRecuperacaoSenha } from "../../shared/email/templates";
+import { emailAtivacaoConta, emailConfirmacaoEmail, emailRecuperacaoSenha } from "../../shared/email/templates";
 import { ForbiddenError, UnauthorizedError } from "../../shared/errors";
 import { ACCESS_TOKEN_TTL_SEGUNDOS, assinarAccessToken } from "../../shared/jwt";
 import { carregarJornada, numeroColuna } from "../equipes/jornada";
@@ -142,7 +142,8 @@ async function emitirSessao(usuario: UsuarioComCurso, contexto: Contexto): Promi
  * e senha errada devolvem a mesma mensagem, para não revelar contas.
  *
  * RF-02: conta criada pelo líder e ainda sem senha (`senha_hash` nulo) não
- * entra — precisa do link de ativação recebido por e-mail.
+ * entra — precisa do link de ativação recebido por e-mail. E quem se
+ * cadastrou já com senha (o líder) só entra depois de confirmar o e-mail.
  */
 export async function login(input: { email: string; password: string }, contexto: Contexto): Promise<Sessao> {
   const usuario = await prisma.usuario.findUnique({ where: { email: input.email }, include: incluirCurso });
@@ -171,6 +172,14 @@ export async function login(input: { email: string; password: string }, contexto
 
   if (!usuario.ativo) {
     throw new ForbiddenError("Esta conta está desativada. Procure a coordenação do InfoHub.", "ACCOUNT_DISABLED");
+  }
+
+  // Só depois da senha certa: quem não sabe a senha não descobre que a conta aguarda confirmação.
+  if (!usuario.emailConfirmadoEm) {
+    throw new ForbiddenError(
+      "Seu e-mail ainda não foi confirmado. Abra o link que enviamos para ele ou peça um novo.",
+      "EMAIL_NOT_CONFIRMED",
+    );
   }
 
   await registrarAuditoria({
@@ -244,7 +253,7 @@ export async function usuarioAtual(usuarioId: string): Promise<UsuarioSessao> {
 }
 
 // ---------------------------------------------------------------------------
-// Tokens de ativação (RF-02) e recuperação (RF-01)
+// Tokens de ativação (RF-02), recuperação (RF-01) e confirmação de e-mail
 // ---------------------------------------------------------------------------
 
 /**
@@ -253,10 +262,11 @@ export async function usuarioAtual(usuarioId: string): Promise<UsuarioSessao> {
  */
 export async function emitirTokenUsuario(usuarioId: string, tipo: TipoToken, db: Db = prisma) {
   const token = gerarTokenOpaco();
+  // Ativação e confirmação duram mais: o aluno pode demorar dias para abrir o e-mail.
   const ttlMs =
-    tipo === "ATIVACAO_CONTA"
-      ? env.ACTIVATION_EXPIRES_IN_HOURS * 60 * 60 * 1000
-      : env.PASSWORD_RESET_EXPIRES_IN_MINUTES * 60 * 1000;
+    tipo === "RECUPERACAO_SENHA"
+      ? env.PASSWORD_RESET_EXPIRES_IN_MINUTES * 60 * 1000
+      : env.ACTIVATION_EXPIRES_IN_HOURS * 60 * 60 * 1000;
 
   await db.tokenUsuario.deleteMany({ where: { usuarioId, tipo, usadoEm: null } });
   await db.tokenUsuario.create({
@@ -281,6 +291,85 @@ export async function enviarAtivacaoConta(
     },
     db,
   );
+}
+
+/** Gera o token de confirmação e enfileira o e-mail (validação do e-mail de quem já tem senha). */
+export async function enviarConfirmacaoEmail(
+  usuario: Pick<Usuario, "id" | "nome" | "email">,
+  contexto: string,
+  db: Db = prisma,
+) {
+  const token = await emitirTokenUsuario(usuario.id, "CONFIRMACAO_EMAIL", db);
+  await enfileirar(
+    {
+      tipo: "CONFIRMACAO_EMAIL",
+      destinatario: { id: usuario.id, email: usuario.email, nome: usuario.nome },
+      modelo: emailConfirmacaoEmail(usuario.nome, token, contexto),
+    },
+    db,
+  );
+}
+
+/**
+ * Novo link de confirmação, pedido depois de um login recusado por
+ * EMAIL_NOT_CONFIRMED. Como no "esqueci minha senha", a resposta é sempre a
+ * mesma, exista a conta ou não.
+ */
+export async function reenviarConfirmacao(email: string, contexto: Contexto) {
+  const usuario = await prisma.usuario.findUnique({ where: { email } });
+  if (!usuario || !usuario.ativo || usuario.excluidoEm || usuario.senhaHash === null || usuario.emailConfirmadoEm) {
+    return;
+  }
+
+  await enviarConfirmacaoEmail(usuario, "Você pediu um novo link de confirmação.");
+  await registrarAuditoria({
+    usuarioId: usuario.id,
+    acao: "CONFIRMACAO_EMAIL_REENVIADA",
+    entidade: "usuario",
+    entidadeId: usuario.id,
+    ip: contexto.ip,
+  });
+  processarFilaEmSegundoPlano();
+}
+
+/**
+ * Validação do e-mail: o dono do endereço abriu o link de confirmação. Abrir
+ * o mesmo link de novo (ou o antivírus do provedor abrir antes da pessoa)
+ * não é erro — a resposta só avisa que o e-mail já estava confirmado.
+ */
+export async function confirmarEmail(token: string, contexto: Contexto): Promise<"CONFIRMADO" | "JA_CONFIRMADO"> {
+  const registro = await prisma.tokenUsuario.findUnique({
+    where: { tokenHash: hashDoToken(token) },
+    include: { usuario: true },
+  });
+
+  if (!registro || registro.tipo !== "CONFIRMACAO_EMAIL" || !registro.usuario.ativo || registro.usuario.excluidoEm) {
+    throw new UnauthorizedError("Este link de confirmação é inválido.", "INVALID_CONFIRMATION_TOKEN");
+  }
+  if (registro.usuario.emailConfirmadoEm) return "JA_CONFIRMADO";
+  if (registro.usadoEm || registro.expiraEm.getTime() < Date.now()) {
+    throw new UnauthorizedError(
+      "Este link de confirmação expirou. Peça um novo para confirmar seu e-mail.",
+      "INVALID_CONFIRMATION_TOKEN",
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.tokenUsuario.update({ where: { id: registro.id }, data: { usadoEm: new Date() } });
+    await tx.usuario.update({ where: { id: registro.usuarioId }, data: { emailConfirmadoEm: new Date() } });
+    await registrarAuditoria(
+      {
+        usuarioId: registro.usuarioId,
+        acao: "EMAIL_CONFIRMADO",
+        entidade: "usuario",
+        entidadeId: registro.usuarioId,
+        ip: contexto.ip,
+      },
+      tx,
+    );
+  });
+
+  return "CONFIRMADO";
 }
 
 /**
@@ -314,7 +403,8 @@ export async function solicitarRecuperacao(email: string, contexto: Contexto) {
 
 /**
  * RF-01/RF-02 — define a senha a partir do token do e-mail (ativação ou
- * recuperação). Uso único, com validade; derruba as sessões abertas.
+ * recuperação). Uso único, com validade; derruba as sessões abertas. Como o
+ * link chegou pelo e-mail, usá-lo também confirma o endereço.
  */
 export async function definirSenha(input: { token: string; password: string }, contexto: Contexto) {
   const registro = await prisma.tokenUsuario.findUnique({
@@ -322,7 +412,7 @@ export async function definirSenha(input: { token: string; password: string }, c
     include: { usuario: true },
   });
 
-  if (!registro || registro.usadoEm || registro.expiraEm.getTime() < Date.now()) {
+  if (!registro || registro.tipo === "CONFIRMACAO_EMAIL" || registro.usadoEm || registro.expiraEm.getTime() < Date.now()) {
     throw new UnauthorizedError(
       "Este link é inválido ou já expirou. Solicite um novo em 'Esqueci minha senha'.",
       "INVALID_RESET_TOKEN",
@@ -336,7 +426,10 @@ export async function definirSenha(input: { token: string; password: string }, c
 
   await prisma.$transaction(async (tx) => {
     await tx.tokenUsuario.update({ where: { id: registro.id }, data: { usadoEm: new Date() } });
-    await tx.usuario.update({ where: { id: registro.usuarioId }, data: { senhaHash } });
+    await tx.usuario.update({
+      where: { id: registro.usuarioId },
+      data: { senhaHash, emailConfirmadoEm: registro.usuario.emailConfirmadoEm ?? new Date() },
+    });
     await tx.sessao.updateMany({
       where: { usuarioId: registro.usuarioId, revogadaEm: null },
       data: { revogadaEm: new Date() },

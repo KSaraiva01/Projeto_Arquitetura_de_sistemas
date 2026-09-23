@@ -3,7 +3,7 @@ import { prisma } from "../../lib/prisma";
 import { registrarAuditoria, type Db } from "../../shared/auditoria";
 import { PERFIL_DA_API, PERFIL_PARA_API, semestreDaApi, semestreParaApi, type ApiRole } from "../../shared/dto";
 import { ConflictError, NotFoundError } from "../../shared/errors";
-import { enviarAtivacaoConta } from "../auth/auth.service";
+import { enviarAtivacaoConta, enviarConfirmacaoEmail } from "../auth/auth.service";
 import { processarFilaEmSegundoPlano } from "../notificacoes/notificacoes.service";
 import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from "./usuarios.schemas";
 
@@ -22,6 +22,8 @@ export interface UsuarioResumo {
   course: string | null;
   semester: string | null;
   isActive: boolean;
+  /** Nulo = e-mail ainda não confirmado (a pessoa não consegue entrar). */
+  emailConfirmedAt: Date | null;
   createdAt: Date;
   mentoredTeams: number;
 }
@@ -43,6 +45,7 @@ function paraResumo(u: UsuarioResumoRow): UsuarioResumo {
     course: u.curso?.nome ?? null,
     semester: semestreParaApi(u.semestre),
     isActive: u.ativo,
+    emailConfirmedAt: u.emailConfirmadoEm,
     createdAt: u.criadoEm,
     mentoredTeams: u._count.mentorias,
   };
@@ -131,7 +134,8 @@ export async function atualizarUsuario(id: string, input: UpdateUserInput, ator:
   if (input.role && atual.perfil === "ALUNO") {
     throw new ConflictError("O perfil de um aluno não pode ser alterado.", "STUDENT_ROLE_LOCKED");
   }
-  if (input.email && input.email !== atual.email) {
+  const trocouEmail = input.email !== undefined && input.email !== atual.email;
+  if (trocouEmail) {
     const emUso = await prisma.usuario.findUnique({ where: { email: input.email }, select: { id: true } });
     if (emUso) throw new ConflictError("Já existe uma conta com este e-mail.", "EMAIL_IN_USE");
   }
@@ -160,6 +164,18 @@ export async function atualizarUsuario(id: string, input: UpdateUserInput, ator:
       },
       include: incluirResumo,
     });
+    if (trocouEmail) {
+      // Links mandados ao endereço antigo deixam de valer, e o que estava pendente
+      // (ativação ou confirmação) vai de novo para o endereço corrigido. Conta já
+      // confirmada continua confirmada: quem trocou o e-mail foi a coordenação.
+      await tx.tokenUsuario.deleteMany({ where: { usuarioId: id, usadoEm: null } });
+      const contexto = "A coordenação atualizou o e-mail da sua conta no InfoHub.";
+      if (usuario.senhaHash === null) {
+        await enviarAtivacaoConta(usuario, contexto, tx);
+      } else if (!usuario.emailConfirmadoEm) {
+        await enviarConfirmacaoEmail(usuario, contexto, tx);
+      }
+    }
     await registrarAuditoria(
       { usuarioId: ator.id, acao: "USUARIO_ATUALIZADO", entidade: "usuario", entidadeId: id, detalhes: { campos: Object.keys(input) }, ip: ator.ip },
       tx,
@@ -167,6 +183,7 @@ export async function atualizarUsuario(id: string, input: UpdateUserInput, ator:
     return usuario;
   });
 
+  if (trocouEmail) processarFilaEmSegundoPlano();
   return paraResumo(atualizado);
 }
 

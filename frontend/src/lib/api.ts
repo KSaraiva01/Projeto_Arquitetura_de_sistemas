@@ -215,6 +215,24 @@ export const api = {
     });
   },
 
+  /** Validação do e-mail: o token vem do link `/confirmar-email?token=…`. */
+  confirmEmail(token: string) {
+    return request<{ alreadyConfirmed: boolean; message: string }>("/auth/confirm-email", {
+      method: "POST",
+      body: { token },
+      retry: false,
+    });
+  },
+
+  /** Novo link de confirmação (login recusado com EMAIL_NOT_CONFIRMED). */
+  resendConfirmation(email: string) {
+    return request<{ message: string }>("/auth/resend-confirmation", {
+      method: "POST",
+      body: { email },
+      retry: false,
+    });
+  },
+
   // -------------------------------------------------------------------------
   // Equipes e jornada
   // -------------------------------------------------------------------------

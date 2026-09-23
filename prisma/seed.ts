@@ -207,6 +207,7 @@ async function seedReferencia() {
       email: adminEmail,
       perfil: "ADMIN",
       senhaHash: await bcrypt.hash(adminSenha, BCRYPT_ROUNDS),
+      emailConfirmadoEm: new Date(),
       consentimentoLgpdEm: new Date(),
     },
   });
@@ -542,6 +543,7 @@ async function seedDemo(admin: Pessoa) {
         perfil: "MENTOR",
         senhaHash: senhaMentor,
         telefone: m.telefone,
+        emailConfirmadoEm: diasAtras(40),
         consentimentoLgpdEm: diasAtras(40),
         criadoEm: diasAtras(40),
       },
@@ -565,7 +567,7 @@ async function seedDemo(admin: Pessoa) {
 
     await prisma.$transaction(
       async (tx) => {
-        // Alunos (RF-05): líder e integrantes já com senha definida (RF-02).
+        // Alunos (RF-05): líder e integrantes já com senha definida (RF-02) e e-mail confirmado.
         const criarAluno = (p: PessoaDemo) =>
           tx.usuario.create({
             data: {
@@ -576,6 +578,7 @@ async function seedDemo(admin: Pessoa) {
               telefone: p.telefone,
               semestre: p.semestre,
               cursoId: p.curso ? cursos.get(p.curso) : undefined,
+              emailConfirmadoEm: cadastradaEm,
               consentimentoLgpdEm: cadastradaEm,
               criadoEm: cadastradaEm,
             },

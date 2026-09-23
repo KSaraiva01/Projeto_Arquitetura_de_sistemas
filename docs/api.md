@@ -19,7 +19,8 @@ A tradução está em `backend/src/shared/dto.ts`.
   token; reutilizar um token antigo derruba todas as sessões do usuário.
 - Erros sempre no envelope `{ "error": { "code", "message", "details"?, "fields"? } }`.
   `422 VALIDATION_ERROR` traz `fields: [{ field, message }]`. Outros códigos comuns: `401 INVALID_CREDENTIALS`,
-  `403 PASSWORD_NOT_SET` (conta ainda não ativada), `403 TEAM_OUT_OF_SCOPE`, `404 *_NOT_FOUND`,
+  `403 PASSWORD_NOT_SET` (conta ainda não ativada), `403 EMAIL_NOT_CONFIRMED` (senha certa, mas o e-mail ainda não
+  foi confirmado — ofereça `POST /auth/resend-confirmation`), `403 TEAM_OUT_OF_SCOPE`, `404 *_NOT_FOUND`,
   `409 STAGE_REQUIREMENTS_PENDING` (RN-01, com `details.pendingTasks`), `409 STUDENT_ALREADY_IN_TEAM` (RN-03),
   `413 UPLOAD_LIMIT_FILE_SIZE`, `429 TOO_MANY_REQUESTS`.
 - Escopo (RNF-03): ADMIN vê tudo; MENTOR só as equipes que acompanha; STUDENT só a própria equipe. Vale para
@@ -36,7 +37,9 @@ A tradução está em `backend/src/shared/dto.ts`.
 | POST | `/auth/login` | `{ email, password }` → `{ accessToken, refreshToken, expiresIn, user }` |
 | POST | `/auth/refresh` · `/auth/logout` | `{ refreshToken? }` (ou cookie) |
 | POST | `/auth/forgot-password` | `{ email }` → sempre 202 (conta sem senha recebe link de ativação) |
-| POST | `/auth/reset-password` | `{ token, password }` — serve para ativação (RF-02) e recuperação (RF-01) |
+| POST | `/auth/reset-password` | `{ token, password }` — serve para ativação (RF-02) e recuperação (RF-01); também confirma o e-mail |
+| POST | `/auth/confirm-email` | `{ token }` do link `/confirmar-email?token=…` → `{ alreadyConfirmed, message }`. Abrir o link de novo não é erro (`alreadyConfirmed: true`); link expirado → `401 INVALID_CONFIRMATION_TOKEN` |
+| POST | `/auth/resend-confirmation` | `{ email }` → sempre 202; novo link de confirmação se a conta tiver senha e o e-mail ainda não confirmado |
 
 `user` da sessão (`ApiSessionUser`): `{ id, name, email, role, phone, course, semester, isActive, createdAt,
 teams: [{ id, name, memberRole, journeyStage, journeyStatus }], mentoredTeamIds? }`.
@@ -50,9 +53,11 @@ teams: [{ id, name, memberRole, journeyStage, journeyStatus }], mentoredTeamIds?
   "lgpdConsent": true
 }
 ```
-→ `201 { teamId, leaderId, memberCount, message }`. O líder cria a senha no formulário; cada colega recebe por e-mail
-um link `/definir-senha?token=…` (72 h) e só consegue logar depois de ativar. Um aluno em equipe ativa não pode entrar
-em outra (RN-03). Cursos são validados pelo nome (tabela `cursos`).
+→ `201 { teamId, leaderId, memberCount, message }`. O líder cria a senha no formulário e recebe um link
+`/confirmar-email?token=…` (72 h): só consegue logar depois de confirmar o e-mail (até lá, `403 EMAIL_NOT_CONFIRMED`).
+Cada colega recebe por e-mail um link `/definir-senha?token=…` (72 h) e só consegue logar depois de ativar — definir a
+senha pelo link já confirma o e-mail. Um aluno em equipe ativa não pode entrar em outra (RN-03). Cursos são validados
+pelo nome (tabela `cursos`).
 
 ### Sessão (autenticado)
 | Método | Rota | Descrição |
@@ -65,9 +70,9 @@ em outra (RN-03). Cursos são validados pelo nome (tabela `cursos`).
 ### Usuários — só ADMIN (RF-03)
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| GET | `/users?role=&isActive=&search=&page=&pageSize=` | `{ data: [{ id, name, email, role, phone, course, semester, isActive, createdAt, mentoredTeams }], total, page, pageSize }` |
+| GET | `/users?role=&isActive=&search=&page=&pageSize=` | `{ data: [{ id, name, email, role, phone, course, semester, isActive, emailConfirmedAt, createdAt, mentoredTeams }], total, page, pageSize }` — `emailConfirmedAt` nulo = e-mail ainda não confirmado (não consegue entrar) |
 | POST | `/users` | `{ name, email, role: "ADMIN"\|"MENTOR", phone? }` — conta nasce sem senha; recebe ativação por e-mail |
-| GET / PATCH | `/users/:id` | PATCH: `{ name?, email?, role?, phone?, course?, semester? }` |
+| GET / PATCH | `/users/:id` | PATCH: `{ name?, email?, role?, phone?, course?, semester? }`. Trocar o `email` invalida os links enviados ao endereço antigo e reenvia a ativação/confirmação pendente para o novo |
 | PATCH | `/users/:id/status` | `{ isActive }` — desativar derruba as sessões; último admin não pode |
 | DELETE | `/users/:id` | Exclusão LGPD feita pelo admin |
 
@@ -148,4 +153,7 @@ Evento do calendário: `{ kind: DUE|REMINDER, date, taskId, title, stage, stageN
 4. `TeamCard.period` (período de ingresso) — `semester` foi mantido com o mesmo valor.
 5. Novos: `/reports/*`, `/teams/:id/refer`, `/teams/:id/members*`, `/teams/:id/reminders` (RF-20),
    `/tasks/:id/reminders`, `/tasks/:id/comments`, `/tasks/:id/status`, `/auth/me/notification-preferences`, `/courses`, `/stages`.
-6. Links dos e-mails: `/definir-senha?token=…` (ativação e recuperação usam a mesma tela e o mesmo endpoint).
+6. Links dos e-mails: `/definir-senha?token=…` (ativação e recuperação usam a mesma tela e o mesmo endpoint) e
+   `/confirmar-email?token=…` (validação do e-mail do líder — a página já existe e chama `POST /auth/confirm-email`).
+7. **Validação do e-mail:** o login responde `403 EMAIL_NOT_CONFIRMED` enquanto o líder não confirmar o e-mail do
+   cadastro; a tela de login oferece `POST /auth/resend-confirmation`.
