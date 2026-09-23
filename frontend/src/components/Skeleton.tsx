@@ -53,6 +53,39 @@ export function BoardSkeleton() {
   );
 }
 
+/** Detalhe da equipe: jornada, abas e a coluna lateral. */
+export function TeamDetailSkeleton() {
+  return (
+    <div role="status" aria-label="Carregando a equipe" className="p-6">
+      <Skeleton className="mb-6 h-4 w-20" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <div className="rounded-xl border border-card-border bg-card p-6">
+            <Skeleton className="mb-6 h-5 w-48" />
+            <div className="flex items-center gap-3">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div key={index} className="flex flex-1 items-center gap-3">
+                  <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                  {index < 5 && <Skeleton className="h-0.5 flex-1" />}
+                </div>
+              ))}
+            </div>
+            <Skeleton className="mt-6 h-10 w-full rounded-lg" />
+          </div>
+          <div className="space-y-3 rounded-xl border border-card-border bg-card p-5">
+            <CardSkeleton />
+            <CardSkeleton />
+          </div>
+        </div>
+        <div className="space-y-6">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Página inteira do dashboard enquanto a sessão é reconstruída. */
 export function DashboardSkeleton() {
   return (

@@ -4,20 +4,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
-  CheckCircle,
   ChevronLeft,
   ChevronRight,
   GripVertical,
   Inbox,
   Loader2,
   Users,
-  X,
 } from "lucide-react";
+import ConfirmAdvanceDialog from "./ConfirmAdvanceDialog";
 import { BoardSkeleton } from "./Skeleton";
+import Toast from "./Toast";
 import { api, ApiError } from "@/lib/api";
 import {
   JOURNEY_STATUS_LABELS,
-  TASK_STATUS_LABELS,
   type ApiBoard,
   type ApiStageBlocker,
   type ApiTeamCard,
@@ -326,7 +325,9 @@ export default function KanbanBoard({
 
       {pendingMove && (
         <ConfirmAdvanceDialog
-          move={pendingMove}
+          teamName={pendingMove.team.name}
+          targetLabel={`etapa ${pendingMove.toStage}`}
+          blockers={pendingMove.blockers}
           reason={reason}
           onReasonChange={setReason}
           isSubmitting={movingId === pendingMove.team.id}
@@ -389,78 +390,6 @@ function ScrollCue({
       >
         {side === "left" ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
       </button>
-    </div>
-  );
-}
-
-/**
- * Aviso no canto: entra da direita, mostra quanto tempo falta na barra de
- * baixo, pausa enquanto o mouse está em cima e sai para baixo. Fecha no X
- * ou sozinho em 5s.
- */
-function Toast({
-  kind,
-  text,
-  onClose,
-}: {
-  kind: "ok" | "erro";
-  text: string;
-  onClose: () => void;
-}) {
-  const [paused, setPaused] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const remaining = useRef(5000);
-  const startedAt = useRef(0);
-
-  const dismiss = useCallback(() => {
-    setLeaving(true);
-    window.setTimeout(onClose, 200);
-  }, [onClose]);
-
-  useEffect(() => {
-    if (paused || leaving) return;
-    startedAt.current = performance.now();
-    const timer = window.setTimeout(dismiss, remaining.current);
-    return () => {
-      window.clearTimeout(timer);
-      remaining.current = Math.max(0, remaining.current - (performance.now() - startedAt.current));
-    };
-  }, [paused, leaving, dismiss]);
-
-  const isOk = kind === "ok";
-
-  return (
-    <div
-      role="status"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      className={`fixed bottom-6 right-6 z-50 flex w-[360px] max-w-[calc(100vw-3rem)] items-start gap-2.5 overflow-hidden rounded-[10px] border border-card-border border-l-4 bg-card py-3 pl-3.5 pr-3 shadow-lg ${
-        isOk ? "border-l-success" : "border-l-danger"
-      } ${leaving ? "animate-toast-out" : "animate-toast-in"}`}
-    >
-      {isOk ? (
-        <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-success" />
-      ) : (
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
-      )}
-      <p className="flex-1 text-sm text-foreground">{text}</p>
-      <button
-        type="button"
-        onClick={dismiss}
-        aria-label="Fechar aviso"
-        className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-hover-bg hover:text-foreground"
-      >
-        <X className="h-4 w-4" />
-      </button>
-      <span
-        aria-hidden="true"
-        className={`absolute bottom-0 left-0 h-[3px] w-full origin-left ${isOk ? "bg-success/35" : "bg-danger/35"}`}
-        style={{
-          // A barra encolhe de 1 para 0 no mesmo tempo do aviso.
-          animation: "toast-bar 5s linear forwards",
-          animationPlayState: paused ? "paused" : "running",
-        }}
-      />
     </div>
   );
 }
@@ -576,122 +505,6 @@ function TeamCard({
           </button>
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * RN-01 — a equipe só avança com as tarefas obrigatórias aprovadas, salvo
- * decisão manual do mentor. Este diálogo é essa decisão: mostra exatamente o
- * que está pendente e pede um motivo, que vai para o histórico da equipe.
- */
-function ConfirmAdvanceDialog({
-  move,
-  reason,
-  onReasonChange,
-  isSubmitting,
-  onCancel,
-  onConfirm,
-}: {
-  move: PendingMove;
-  reason: string;
-  onReasonChange: (value: string) => void;
-  isSubmitting: boolean;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  // Esc fecha; o foco vai para a caixa de motivo, que é o que se preenche.
-  const reasonRef = useRef<HTMLTextAreaElement | null>(null);
-
-  useEffect(() => {
-    reasonRef.current?.focus();
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onCancel();
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-advance-title"
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onCancel}
-    >
-      <div
-        className="animate-dialog-in bg-card rounded-2xl border border-card-border shadow-xl max-w-lg w-full p-6"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-warning" />
-          </div>
-          <div>
-            <h2
-              id="confirm-advance-title"
-              className="text-base font-semibold text-foreground"
-            >
-              Avançar mesmo com pendências?
-            </h2>
-            <p className="text-sm text-muted mt-1">
-              A equipe <strong>{move.team.name}</strong> tem tarefas
-              obrigatórias sem aprovação nas etapas anteriores à {move.toStage}.
-            </p>
-          </div>
-        </div>
-
-        <ul className="space-y-2 mb-4 max-h-52 overflow-y-auto">
-          {move.blockers.map((blocker) => (
-            <li
-              key={blocker.id}
-              className="flex items-center justify-between gap-3 text-sm bg-hover-bg rounded-lg px-3 py-2"
-            >
-              <span className="text-foreground truncate">{blocker.title}</span>
-              <span className="text-xs text-muted shrink-0">
-                Etapa {blocker.stage} · {TASK_STATUS_LABELS[blocker.status]}
-              </span>
-            </li>
-          ))}
-        </ul>
-
-        <label className="block text-sm font-medium text-foreground mb-1.5">
-          Motivo do avanço manual
-          <span className="text-muted-light font-normal"> (opcional)</span>
-        </label>
-        <textarea
-          ref={reasonRef}
-          value={reason}
-          onChange={(event) => onReasonChange(event.target.value)}
-          rows={2}
-          placeholder="Ex.: entregas revisadas presencialmente no encontro."
-          className="w-full px-3 py-2 bg-input-bg border border-input-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none"
-        />
-        <p className="text-xs text-muted-light mt-1.5">
-          O motivo fica registrado no histórico da equipe e na auditoria.
-        </p>
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-muted hover:text-foreground rounded-lg hover:bg-hover-bg transition-colors inline-flex items-center gap-2"
-          >
-            Cancelar
-            <kbd className="rounded border border-card-border px-1 text-[10px] font-normal text-muted-light">Esc</kbd>
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors inline-flex items-center gap-2 disabled:opacity-60"
-          >
-            {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            Avançar mesmo assim
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

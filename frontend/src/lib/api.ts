@@ -2,9 +2,16 @@ import type {
   ApiBoard,
   ApiCalendar,
   ApiChangeStageResult,
+  ApiJourneyStage,
+  ApiNote,
   ApiSession,
   ApiSessionUser,
   ApiStageBlocker,
+  ApiTask,
+  ApiTaskDetail,
+  ApiTaskTemplate,
+  ApiTeamCard,
+  ApiTeamDetail,
 } from "./api-types";
 
 const API_URL =
@@ -29,6 +36,12 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/** Mensagem para a tela: o primeiro campo inválido (422) é mais útil que o texto genérico. */
+export function describeError(err: unknown, fallback: string): string {
+  if (!(err instanceof ApiError)) return fallback;
+  return err.fields?.[0]?.message ?? err.message;
 }
 
 /**
@@ -126,10 +139,11 @@ interface RequestOptions {
   retry?: boolean;
 }
 
-async function request<T>(
+/** Faz a chamada autenticada (com um refresh em caso de 401) e devolve a resposta já validada. */
+async function send(
   path: string,
   { method = "GET", body, retry = true }: RequestOptions = {},
-): Promise<T> {
+): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getAccessToken();
 
@@ -146,13 +160,19 @@ async function request<T>(
   if (response.status === 401 && retry) {
     const renewed = await refreshSession();
     if (renewed) {
-      return request<T>(path, { method, body, retry: false });
+      return send(path, { method, body, retry: false });
     }
   }
 
   if (!response.ok) {
     throw await parseError(response);
   }
+
+  return response;
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await send(path, options);
 
   if (response.status === 204) {
     return undefined as T;
@@ -256,10 +276,33 @@ export const api = {
     );
   },
 
-  /** RF-09 — mover a equipe de etapa (o arrastar do kanban). */
+  /** Cursos ativos (público — alimenta o cadastro e os filtros). */
+  courses() {
+    return request<{ data: Array<{ id: string; name: string }> }>("/courses");
+  },
+
+  /** Mentores ativos, para os filtros do admin (RF-03 — só ADMIN). */
+  mentors() {
+    return request<{ data: Array<{ id: string; name: string }> }>("/users?role=MENTOR&isActive=true&pageSize=100");
+  },
+
+  /** RF-07 — equipes em lista, com os mesmos filtros do quadro. */
+  teams(filters: { search?: string; status?: string; course?: string; mentorId?: string; taskStatus?: string } = {}) {
+    return request<{ data: ApiTeamCard[]; total: number }>(`/teams${toQueryString(filters)}`);
+  },
+
+  /** RF-08 — equipe com integrantes, jornada (inclusive etapas extras) e histórico. */
+  team(teamId: string) {
+    return request<ApiTeamDetail>(`/teams/${teamId}`);
+  },
+
+  /**
+   * RF-09 — mover a equipe de etapa. O kanban manda a coluna (`toStage`);
+   * o detalhe da equipe manda a etapa exata (`toStageId`), que pode ser extra.
+   */
   changeStage(
     teamId: string,
-    input: { toStage: number; reason?: string; force?: boolean },
+    input: ({ toStage: number } | { toStageId: string }) & { reason?: string; force?: boolean },
   ) {
     return request<ApiChangeStageResult>(`/teams/${teamId}/stage`, {
       method: "PATCH",
@@ -267,9 +310,106 @@ export const api = {
     });
   },
 
+  /** Etapa extra só nesta equipe. Sem `afterStageId`, entra no fim da jornada. */
+  addStage(teamId: string, input: { name: string; description?: string; afterStageId?: string }) {
+    return request<{ stageId: string; journey: ApiJourneyStage[] }>(`/teams/${teamId}/stages`, {
+      method: "POST",
+      body: input,
+    });
+  },
+
+  /** Remove uma etapa extra que ainda não tenha tarefas nem histórico. */
+  removeStage(teamId: string, stageId: string) {
+    return request<{ journey: ApiJourneyStage[] }>(`/teams/${teamId}/stages/${stageId}`, {
+      method: "DELETE",
+    });
+  },
+
+  /** Coordenação encaminha a equipe ao InovAMF (`force` quando ainda não está pronta). */
+  referTeam(teamId: string, force = false) {
+    return request<{ team: ApiTeamCard; message: string }>(`/teams/${teamId}/refer`, {
+      method: "POST",
+      body: { force },
+    });
+  },
+
+  /** RF-20 — lembrete manual por e-mail para a equipe inteira. */
+  sendTeamReminder(teamId: string, input: { subject: string; message: string }) {
+    return request<{ recipients: number; message: string }>(`/teams/${teamId}/reminders`, {
+      method: "POST",
+      body: input,
+    });
+  },
+
+  /** RF-10 — anotações internas (nunca chegam ao aluno). */
+  notes(teamId: string) {
+    return request<{ data: ApiNote[] }>(`/teams/${teamId}/notes`);
+  },
+
+  addNote(teamId: string, content: string) {
+    return request<{ id: string; note: ApiNote }>(`/teams/${teamId}/notes`, {
+      method: "POST",
+      body: { content },
+    });
+  },
+
   // -------------------------------------------------------------------------
   // Tarefas e calendário
   // -------------------------------------------------------------------------
+
+  tasks(filters: { teamId?: string; status?: string; search?: string } = {}) {
+    return request<{ data: ApiTask[]; total: number }>(`/tasks${toQueryString(filters)}`);
+  },
+
+  /** RF-13 — tarefa com as versões de entrega e os comentários. */
+  task(taskId: string) {
+    return request<{ task: ApiTaskDetail }>(`/tasks/${taskId}`);
+  },
+
+  /** RF-11 — modelos de tarefa por etapa padrão. */
+  taskTemplates() {
+    return request<{ data: ApiTaskTemplate[] }>("/tasks/templates");
+  },
+
+  /** RF-12 — `stageId` pode ser qualquer etapa da jornada da equipe, inclusive extra. */
+  createTask(input: {
+    teamId: string;
+    templateId?: string;
+    stageId?: string;
+    title?: string;
+    description?: string;
+    dueDate: string;
+    isMandatory?: boolean;
+  }) {
+    return request<{ task: ApiTaskDetail; message: string }>("/tasks", {
+      method: "POST",
+      body: input,
+    });
+  },
+
+  /** RF-15 — aprovar ou pedir ajustes, sempre com comentário. */
+  reviewTask(taskId: string, input: { decision: "APPROVED" | "REJECTED"; comment: string }) {
+    return request<{ task: ApiTaskDetail; message: string }>(`/tasks/${taskId}/review`, {
+      method: "POST",
+      body: input,
+    });
+  },
+
+  /**
+   * RNF-04 — o download exige o token, então não dá para ser um link comum:
+   * baixa pelo fetch e entrega ao navegador como arquivo.
+   */
+  async downloadAttachment(url: string, fileName: string) {
+    // A API devolve a rota completa (/api/tasks/…); `send` já prefixa API_URL.
+    const response = await send(url.replace(/^\/api(?=\/)/, ""));
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName;
+    link.click();
+    // Revogar na mesma hora pode cancelar o download em alguns navegadores.
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  },
 
   calendar(params: {
     from: string;

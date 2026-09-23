@@ -6,7 +6,7 @@ import {
   type ApiIdeaStage,
   type ApiJourneyStatus,
 } from "../../shared/dto";
-import { numeroColuna, selecaoEtapa, type EtapaDaJornada } from "./jornada";
+import { etapaParaApi, numeroColuna, selecaoEtapa, type EtapaDaJornada } from "./jornada";
 
 /**
  * `include` padrão para montar o cartão da equipe (kanban e listagens).
@@ -37,6 +37,8 @@ export interface EquipeCard {
   journeyStageName: string;
   /** Etapa exata da jornada da equipe — pode ser uma etapa extra. */
   currentStage: { id: string; name: string; order: number; isExtra: boolean };
+  /** A jornada inteira da equipe (padrão + extras), para as listas desenharem o progresso. */
+  journey: Array<ReturnType<typeof etapaParaApi>>;
   journeyStatus: ApiJourneyStatus;
   /** Período de ingresso ("2026/2"). Nome mantido por compatibilidade com o front. */
   semester: string;
@@ -69,6 +71,7 @@ export function paraCard(equipe: EquipeCardRow): EquipeCard {
     currentStage: atual
       ? { id: atual.id, name: atual.nome, order: atual.ordem, isExtra: atual.etapaPadraoId === null }
       : { id: "", name: "", order: 0, isExtra: false },
+    journey: jornada.map((etapa) => etapaParaApi(etapa, equipe.etapaAtualId)),
     journeyStatus: STATUS_JORNADA_PARA_API[equipe.statusJornada],
     semester: equipe.periodoIngresso,
     period: equipe.periodoIngresso,

@@ -106,7 +106,7 @@ Um único resource (Application), apontando para este repositório na branch `in
 | --------------------------------------------- | ----- |
 | Build pipeline → **Build strategy**           | **Dockerfile** (não Railpack/Nixpacks: o `Dockerfile` já faz o build do back e do front, define usuário, fuso e health check). Dockerfile location: `/Dockerfile`. |
 | Install / Build / Start command               | Vazios — vêm do Dockerfile (`CMD npm start`). **Não** use `npm run dev` em produção. |
-| Pre-deployment / Post-deployment              | Vazios. Migrations e seed já rodam dentro do `npm start`; não repita aqui. |
+| Pre-deployment / Post-deployment              | Vazios. Migrations e seed já rodam dentro do `npm start`; não repita aqui. (Um `npx prisma db:seed` nesse campo falha com `Unknown command "db:seed"`: `db:seed` é o nome do script npm, e o comando do Prisma é `prisma db seed`.) |
 | Networking → **Ports exposes**                | `3000` (porta interna do container, a mesma do Dockerfile). Se o acesso for por IP:porta em vez de domínio, acrescente um *Port mapping* `<porta externa>:3000`, ex.: `3008:3000`. |
 | Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` (`resend` + `RESEND_API_KEY` + `MAIL_FROM` — ver [E-mails](#e-mails-resend); `console` só imprime no log). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR` e `TZ` já vêm do Dockerfile. |
 | Storages                                      | **Volume Mount** com destino `/app/uploads` (arquivos das entregas — inclusive os PDFs do cenário). |

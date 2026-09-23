@@ -1,4 +1,5 @@
 import { TaskStatus } from "@/lib/types";
+import type { ApiJourneyStatus, ApiTaskStatus } from "@/lib/api-types";
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; bg: string; text: string }> = {
   pendente:      { label: "Pendente",      bg: "bg-badge-muted-bg",           text: "text-badge-muted-text" },
@@ -32,4 +33,30 @@ export function TeamStatusBadge({ status }: { status: string }) {
       {c.label}
     </span>
   );
+}
+
+// Status no vocabulário da API, mapeados para as mesmas cores do protótipo.
+
+const API_TASK_STATUS: Record<ApiTaskStatus, TaskStatus> = {
+  PENDING: "pendente",
+  IN_PROGRESS: "em_andamento",
+  SUBMITTED: "entregue",
+  OVERDUE: "atrasada",
+  APPROVED: "aprovada",
+  REJECTED: "reprovada",
+};
+
+export function TaskStatusBadge({ status }: { status: ApiTaskStatus }) {
+  return <StatusBadge status={API_TASK_STATUS[status]} />;
+}
+
+const API_JOURNEY_STATUS: Record<ApiJourneyStatus, string> = {
+  IN_PROGRESS: "ativa",
+  READY_FOR_INOVAMF: "pronta_inovamf",
+  REFERRED: "encaminhada",
+};
+
+/** Situação da equipe no funil; equipe excluída aparece como inativa. */
+export function JourneyStatusBadge({ status, isActive = true }: { status: ApiJourneyStatus; isActive?: boolean }) {
+  return <TeamStatusBadge status={isActive ? API_JOURNEY_STATUS[status] : "inativa"} />;
 }

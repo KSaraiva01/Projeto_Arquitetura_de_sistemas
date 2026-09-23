@@ -86,8 +86,8 @@ pelo nome (tabela `cursos`).
 | DELETE | `/teams/:id` | admin | Q4 — exclusão lógica |
 | GET | `/teams/:id/stage-blockers?toStage=N` ou `?toStageId=` | admin, mentor | RN-01 — `{ isAdvancing, blockers }` |
 | PATCH | `/teams/:id/stage` | admin, mentor | RF-09 — `{ toStage? \| toStageId?, reason?, force? }` → `{ team, fromStage, toStage, isAdvancing, forced, skippedTasks, journeyStatus, message }`; 409 se faltar obrigatória e `force=false` |
-| POST | `/teams/:id/stages` | admin, mentor | Etapa extra: `{ name, description?, afterStage? \| afterStageId? }` → `{ stageId, journey }` |
-| DELETE | `/teams/:id/stages/:stageId` | admin, mentor | Remove etapa extra sem tarefas/histórico |
+| POST | `/teams/:id/stages` | admin, mentor | Etapa extra só nesta equipe: `{ name, description?, afterStage? \| afterStageId? }` (sem posição = fim da jornada) → `{ stageId, journey }` |
+| DELETE | `/teams/:id/stages/:stageId` | admin, mentor | Remove etapa extra sem tarefas/histórico (`409 STAGE_IN_USE`, `STAGE_IS_CURRENT`, `STAGE_IS_DEFAULT`) |
 | POST | `/teams/:id/refer` | admin | `{ force? }` — marca ENCAMINHADA (exige READY_FOR_INOVAMF, salvo `force`) |
 | POST / DELETE | `/teams/:id/mentors` · `/teams/:id/mentors/:mentorId` | admin | `{ mentorId }` |
 | POST | `/teams/:id/members` | líder, mentor, admin | `{ name, email, course, semester? }` — cria a conta (ativação por e-mail) se não existir |
@@ -98,10 +98,11 @@ pelo nome (tabela `cursos`).
 | POST | `/teams/:id/reminders` | admin, mentor | RF-20 — `{ subject, message }` → `{ recipients, message }` |
 
 `TeamCard`: `{ id, name, description, category: { id, name }, ideaStage, journeyStage (coluna 1–6), journeyStageName,
-currentStage: { id, name, order, isExtra }, journeyStatus, period, semester (= period, compatibilidade), howDidYouHear,
-isActive, createdAt, readyAt, referredAt, leader: { id, name, email, course }, mentors: [{ id, name }], memberCount,
-openTasks, overdueTasks }`.
+currentStage: { id, name, order, isExtra }, journey (a jornada inteira, igual à do detalhe), journeyStatus, period,
+semester (= period, compatibilidade), howDidYouHear, isActive, createdAt, readyAt, referredAt,
+leader: { id, name, email, course }, mentors: [{ id, name }], memberCount, openTasks, overdueTasks }`.
 `journey[]`: `{ id, order, number (null = extra), name, description, isExtra, isCurrent }`.
+Mudar a etapa, incluir ou remover etapas de uma equipe já encaminhada ao InovAMF → `409 TEAM_ALREADY_REFERRED`.
 `stageHistory[]`: `{ id, fromStage, fromStageName, toStage, toStageName, direction: start|advance|rollback, reason, forced, changedAt, changedByName }`.
 
 ### Tarefas (`/tasks`)

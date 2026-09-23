@@ -120,6 +120,14 @@ function exigirEquipeAtiva(equipe: EquipeCardRow) {
   }
 }
 
+/** A jornada só muda (etapa atual ou etapas extras) enquanto a equipe não foi encaminhada ao InovAMF. */
+function exigirJornadaAberta(equipe: EquipeCardRow) {
+  exigirEquipeAtiva(equipe);
+  if (equipe.statusJornada === "ENCAMINHADA") {
+    throw new ConflictError("Esta equipe já foi encaminhada ao InovAMF.", "TEAM_ALREADY_REFERRED");
+  }
+}
+
 /** Quem pode mexer nos dados/integrantes da equipe: admin, mentor da equipe ou o líder. */
 function exigirGestorOuLider(usuario: UsuarioAutenticado, equipe: EquipeCardRow) {
   if (podeMentorar(usuario) || equipe.liderId === usuario.id) return;
@@ -243,10 +251,7 @@ export async function mudarEtapa(usuario: UsuarioAutenticado, equipeId: string, 
   }
 
   const equipe = await carregarEquipeNoEscopo(usuario, equipeId);
-  exigirEquipeAtiva(equipe);
-  if (equipe.statusJornada === "ENCAMINHADA") {
-    throw new ConflictError("Esta equipe já foi encaminhada ao InovAMF.", "TEAM_ALREADY_REFERRED");
-  }
+  exigirJornadaAberta(equipe);
 
   const jornada: EtapaDaJornada[] = equipe.etapas;
   const de = jornada.find((e) => e.id === equipe.etapaAtualId) ?? jornada[0]!;
@@ -333,7 +338,7 @@ export async function adicionarEtapaExtra(usuario: UsuarioAutenticado, equipeId:
     throw new ForbiddenError("Apenas administradores e mentores podem alterar a jornada da equipe.", "CANNOT_MANAGE_JOURNEY");
   }
   const equipe = await carregarEquipeNoEscopo(usuario, equipeId);
-  exigirEquipeAtiva(equipe);
+  exigirJornadaAberta(equipe);
 
   const jornada: EtapaDaJornada[] = equipe.etapas;
   let aposOrdem = jornada[jornada.length - 1]!.ordem;
@@ -374,6 +379,7 @@ export async function removerEtapaExtra(usuario: UsuarioAutenticado, equipeId: s
     throw new ForbiddenError("Apenas administradores e mentores podem alterar a jornada da equipe.", "CANNOT_MANAGE_JOURNEY");
   }
   const equipe = await carregarEquipeNoEscopo(usuario, equipeId);
+  exigirJornadaAberta(equipe);
   const etapa = equipe.etapas.find((e) => e.id === etapaId);
   if (!etapa) throw new NotFoundError("Etapa não encontrada nesta equipe.", "STAGE_NOT_FOUND");
   if (etapa.etapaPadraoId) throw new ConflictError("As etapas padrão da jornada não podem ser removidas.", "STAGE_IS_DEFAULT");
