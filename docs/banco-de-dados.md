@@ -91,7 +91,7 @@ erDiagram
 ### Usuários e acesso
 | Tabela           | Para quê | Requisitos |
 | ---------------- | -------- | ---------- |
-| `usuarios`       | Uma linha por pessoa. `perfil` = ADMIN, MENTOR ou ALUNO (líder e integrante são ALUNO). `senha_hash` **nulo** até o integrante ativar a conta. `email_confirmado_em` **nulo** até a pessoa provar que o e-mail é dela (validação do e-mail — sem isso o login é recusado). `ativo` (admin desativa), `consentimento_lgpd_em`, `excluido_em` (anonimização). | RF-01, RF-02, RF-03, RNF-02 |
+| `usuarios`       | Uma linha por pessoa. `perfil` = ADMIN, MENTOR ou ALUNO (líder e integrante são ALUNO). `senha_hash` **nulo** até o integrante ativar a conta. `email_confirmado_em` **nulo** até a pessoa provar que o e-mail é dela (validação do e-mail — sem isso o login é recusado). `ativo` (admin desativa), `consentimento_lgpd_em` (a própria pessoa aceita a política de privacidade: o líder no formulário, o colega e as contas criadas pela coordenação ao ativar a conta), `excluido_em` (anonimização). | RF-01, RF-02, RF-03, RNF-02 |
 | `tokens_usuario` | Tokens de uso único enviados por e-mail: `ATIVACAO_CONTA` (integrante cadastrado pelo líder define a senha), `RECUPERACAO_SENHA` e `CONFIRMACAO_EMAIL` (líder, que se cadastra já com senha, confirma o e-mail). Guarda só o hash. | RF-01, RF-02 |
 | `sessoes`        | Refresh tokens (rotativos, cookie httpOnly). Permite revogar sessões ao desativar/excluir conta. | RF-01, RNF-03 |
 
@@ -108,7 +108,7 @@ erDiagram
 ### Tarefas e entregas
 | Tabela               | Para quê | Requisitos |
 | -------------------- | -------- | ---------- |
-| `modelos_tarefa`     | Modelos por etapa padrão (seed com 9). Os da etapa 6 são os entregáveis obrigatórios. | RF-11, RN-02 |
+| `modelos_tarefa`     | Modelos por etapa padrão (seed com 9). Os obrigatórios da etapa 6 são os entregáveis finais da RN-02 (Pitch Vídeo, Canvas final, VPD final, dados dos integrantes): a equipe só fica pronta para o InovAMF com uma tarefa aprovada de cada um (`tarefas.modelo_tarefa_id`). | RF-11, RN-02 |
 | `tarefas`            | Tarefa de uma equipe, ligada a uma etapa da jornada dela. `prazo`, `status` (PENDENTE, EM_ANDAMENTO, ENTREGUE, ATRASADA, APROVADA, REPROVADA), `obrigatoria`. | RF-11, RF-12, RF-13, RN-01, RN-04 |
 | `entregas`           | Um envio = uma versão (`versao` única por tarefa). Reenvio corrigido cria nova versão; nada é sobrescrito. | RF-14, RF-16 |
 | `anexos_entrega`     | Um ou mais arquivos (ou links) por entrega. Metadados apenas; o binário fica no volume `uploads/`. | RF-14, RNF-04, Q3 |
@@ -118,7 +118,7 @@ erDiagram
 | Tabela                      | Para quê | Requisitos |
 | --------------------------- | -------- | ---------- |
 | `lembretes_tarefa`          | Datas de lembrete por tarefa. `dias_antes` (relativo ao prazo) + `lembrar_em` (materializado) + `enviado_em`. | RF-17, RN-04 |
-| `notificacoes`              | Fila **e** registro de todos os e-mails. `chave_idempotencia` única = garantia de não enviar duas vezes. `status`, `tentativas`, `proximo_envio_em`, `erro` = reenvio em caso de falha. `id_mensagem_provedor` = ID do e-mail na Resend (acha a mensagem no painel). | RF-18, RF-19, RF-20, RNF-05, RNF-06 |
+| `notificacoes`              | Fila **e** registro de todos os e-mails. `chave_idempotencia` única = garantia de não enviar duas vezes. `status`, `tentativas`, `proximo_envio_em`, `erro` = reenvio em caso de falha. `id_mensagem_provedor` = ID do e-mail na Resend (acha a mensagem no painel). Nos e-mails de segurança (ativação, recuperação, confirmação) o token do link sai do `corpo` assim que o e-mail é enviado — o banco nunca guarda token utilizável. | RF-18, RF-19, RF-20, RNF-05, RNF-06 |
 | `preferencias_notificacao`  | Opt-out por tipo (sem linha = recebe). | RF-21 |
 
 ### Mentoria e auditoria
@@ -136,21 +136,24 @@ erDiagram
 | Avanço só com obrigatórias aprovadas (RN-01) | `tarefas.obrigatoria`, `historico_etapas.forcado` | Consulta tarefas obrigatórias não aprovadas entre a etapa atual e a destino; mentor pode forçar (`forcado = true`, com motivo) |
 | Só mentor/admin move etapa (nota RF-11) | `mentores_equipe` | Autorização: ADMIN qualquer equipe; MENTOR só as suas; ALUNO nunca |
 | Etapas padrão = 6, extras por equipe | `etapas_equipe` (cópia por equipe) | Inserir extra reordena `ordem` em transação; extra só pode ser removida sem tarefas/histórico |
-| Depois da última etapa → InovAMF | `status_jornada`, `pronta_em`, `encaminhada_em` | Ao concluir a última etapa com obrigatórias aprovadas → PRONTA_INOVAMF; coordenação marca ENCAMINHADA |
+| Depois da última etapa → InovAMF | `status_jornada`, `pronta_em`, `encaminhada_em` | Na última etapa, com todas as obrigatórias aprovadas **e** os entregáveis finais da RN-02 aprovados → PRONTA_INOVAMF; coordenação marca ENCAMINHADA |
+| Entregáveis finais obrigatórios (RN-02) | `modelos_tarefa` (obrigatórios da etapa 6), `tarefas.modelo_tarefa_id` | Cada modelo precisa de uma tarefa da equipe aprovada; o detalhe da equipe lista o que falta (`finalDeliverables`) e o mentor cria as que faltam de uma vez |
 | Tarefa vencida vira ATRASADA (RN-04) | índice `(status, prazo)` | Job periódico: `status IN (PENDENTE, EM_ANDAMENTO) AND prazo < now()` → ATRASADA + notificações |
-| Lembretes acompanham o prazo (nota RF-17) | `lembretes_tarefa.dias_antes` | Ao alterar `prazo`, recalcula `lembrar_em` dos lembretes com `dias_antes` não nulo e `enviado_em` nulo |
-| Nunca enviar e-mail duplicado (RF-18/19) | `UNIQUE notificacoes.chave_idempotencia` | Chave = `TIPO:entidade:<id>:usuario:<id>`; INSERT com `ON CONFLICT DO NOTHING` (ou `skipDuplicates`) |
+| Lembretes acompanham o prazo (nota RF-17) | `lembretes_tarefa.dias_antes` | Ao alterar `prazo`, recalcula `lembrar_em` dos lembretes com `dias_antes`; os que já tinham saído e caem numa data futura voltam a valer (`enviado_em` nulo). Vários vencendo juntos para a mesma tarefa viram um e-mail só |
+| Nunca enviar e-mail duplicado (RF-18/19) | `UNIQUE notificacoes.chave_idempotencia` | Chave = `TIPO:entidade:<id>:usuario:<id>` (em `PRAZO_PROXIMO`, `PRAZO_VENCIDO` e `TAREFA_ATRASADA` entra também o prazo: adiar a entrega libera um novo aviso); INSERT com `ON CONFLICT DO NOTHING` (ou `skipDuplicates`) |
 | Reenvio em caso de falha (RNF-06) | `tentativas`, `proximo_envio_em` | Job reenvia PENDENTE/FALHOU com backoff; após N tentativas mantém FALHOU. Falha permanente (endereço inválido, domínio não verificado na Resend) não é reenviada. Cada envio leva a chave de idempotência `notificacao/<id>` na Resend |
 | Só entra quem provou o e-mail | `usuarios.email_confirmado_em` | Login recusa nulo (`EMAIL_NOT_CONFIRMED`). Preenchido pelo link de confirmação (líder) ou ao definir a senha por link de ativação/recuperação |
-| Exclusão lógica de equipe (Q4) | `equipes.excluida_em` | Listagens filtram `excluida_em IS NULL`; nada em cascata é apagado |
-| Exclusão de aluno (RNF-02) | `usuarios.excluido_em`, FKs `SET NULL` | Anonimiza nome/e-mail/telefone, revoga sessões/tokens, fecha `integrantes_equipe.saiu_em`; se era líder, promove outro integrante ou exclui a equipe logicamente se não houver |
+| Exclusão lógica de equipe (Q4) | `equipes.excluida_em` | Listagens filtram `excluida_em IS NULL`; nada em cascata é apagado. Mentor e aluno deixam de enxergar a equipe e as tarefas dela (404); o admin consulta, mas nada mais é alterado (`TEAM_INACTIVE`) |
+| Exclusão de aluno (RNF-02) | `usuarios.excluido_em`, FKs `SET NULL` | Anonimiza nome/e-mail/telefone, apaga sessões/tokens/preferências, fecha `integrantes_equipe.saiu_em`; se era líder, promove outro integrante ou exclui a equipe logicamente se não houver. Também limpa as cópias: e-mails pendentes para a pessoa são descartados e os enviados perdem endereço e conteúdo, o nome completo some dos e-mails enviados a outras pessoas, o e-mail sai de `registros_auditoria.detalhes` e o IP das ações dela |
+| Retenção (RNF-02) | `sessoes`, `tokens_usuario`, `notificacoes`, `registros_auditoria` | Uma vez por dia o job apaga sessões encerradas há 30 dias, links usados/vencidos há 30 dias, e-mails enviados há 365 dias e registros de acesso (login/logout) há 180 dias — prazos em `RETENTION_*`. O histórico de negócio fica. Política em `docs/lgpd.md` |
+| Backup (RNF-07) | todas as tabelas do schema | `BACKUP_INTERVAL_HOURS` (24 h) o job grava `infohub-<schema>-<data>.json.gz` em `BACKUP_DIR` (transação REPEATABLE READ) e espelha os uploads; guarda os `BACKUP_KEEP` mais novos. `npm run backup:restaurar` volta um deles |
 | Cada perfil só vê o seu escopo (RNF-03, RF-10) | `integrantes_equipe`, `mentores_equipe` | Escopo aplicado em toda consulta; anotações nunca vão para ALUNO |
 | Limite de tamanho/tipo de arquivo (RNF-04) | `tamanho_bytes`, `mime_type` | Validado no upload antes de gravar |
 
 ## Fluxos principais
 
 **Cadastro (RF-02/RF-05).** Em uma transação: cria o líder (`ALUNO`, senha informada, `consentimento_lgpd_em`,
-`email_confirmado_em` nulo) com um `tokens_usuario(CONFIRMACAO_EMAIL)` e e-mail `CONFIRMACAO_EMAIL`, cria cada colega (`ALUNO`, `senha_hash` nulo) com um `tokens_usuario(ATIVACAO_CONTA)` e e-mail `ATIVACAO_CONTA`,
+`email_confirmado_em` nulo) com um `tokens_usuario(CONFIRMACAO_EMAIL)` e e-mail `CONFIRMACAO_EMAIL`, cria cada colega (`ALUNO`, `senha_hash` e `consentimento_lgpd_em` nulos — ele aceita a política ao ativar a conta em `/definir-senha`) com um `tokens_usuario(ATIVACAO_CONTA)` e e-mail `ATIVACAO_CONTA`,
 cria a equipe (`lider_id`, `periodo_ingresso`), copia as 6 `etapas_padrao` para `etapas_equipe`, aponta
 `etapa_atual_id` para a ordem 1, grava `historico_etapas(INICIO)` e enfileira `notificacoes(NOVO_CADASTRO)` para
 os admins.
@@ -159,10 +162,12 @@ os admins.
 tarefa vai para ENTREGUE; e-mail `ENTREGA_RECEBIDA` ao mentor. Mentor avalia → `comentarios_tarefa` com `decisao`;
 tarefa vai para APROVADA ou REPROVADA; e-mail `ENTREGA_AVALIADA` ao aluno. Reenvio após REPROVADA gera a versão seguinte.
 
-**Job (RN-04, RF-17, RF-18, RF-19, RNF-06).** A cada X minutos: (1) marca tarefas vencidas como ATRASADA e enfileira
-`PRAZO_VENCIDO` (aluno) e `TAREFA_ATRASADA` (mentor/admin); (2) para `lembretes_tarefa` com `lembrar_em <= now()` e
-`enviado_em` nulo enfileira `PRAZO_PROXIMO` e marca `enviado_em`; (3) envia `notificacoes` PENDENTE/FALHOU cujo
-`proximo_envio_em` já passou, atualizando `status`, `tentativas`, `enviada_em` + `id_mensagem_provedor` / `erro`.
+**Job (RN-04, RF-17, RF-18, RF-19, RNF-02, RNF-06, RNF-07).** A cada X minutos: (1) marca tarefas vencidas como
+ATRASADA e enfileira `PRAZO_VENCIDO` (aluno) e `TAREFA_ATRASADA` (mentor/admin); (2) para `lembretes_tarefa` com
+`lembrar_em <= now()` e `enviado_em` nulo enfileira `PRAZO_PROXIMO` (um por tarefa, mesmo que vários lembretes vençam
+juntos) e marca `enviado_em`; (3) envia `notificacoes` PENDENTE/FALHOU cujo `proximo_envio_em` já passou, atualizando
+`status`, `tentativas`, `enviada_em` + `id_mensagem_provedor` / `erro`; (4) uma vez por dia, aplica a retenção; (5) gera
+o backup quando o último passou de `BACKUP_INTERVAL_HOURS`.
 
 ## Seeds
 

@@ -2,38 +2,40 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  ExternalLink,
   FileText,
   Flag,
   History,
-  Link2,
   Loader2,
-  Mail,
   MessageSquare,
   Paperclip,
-  Phone,
+  Pencil,
   Plus,
   Rocket,
   Send,
+  Trash2,
   Undo2,
-  Users,
 } from "lucide-react";
+import ConfirmDialog from "./ConfirmDialog";
 import DueChip from "./DueChip";
+import FinalDeliverablesCard from "./FinalDeliverablesCard";
 import Header from "./Header";
 import JourneyCard from "./JourneyCard";
 import { TeamDetailSkeleton } from "./Skeleton";
 import { TaskStatusBadge } from "./StatusBadge";
+import { SubmissionVersions } from "./Submissions";
+import TaskEditor from "./TaskEditor";
+import TeamPeopleCard from "./TeamPeopleCard";
 import Toast, { type ToastMessage } from "./Toast";
 import { api, describeError } from "@/lib/api";
 import {
   IDEA_STAGE_LABELS,
   journeyStageLabel,
-  type ApiAttachment,
   type ApiJourneyStage,
   type ApiNote,
   type ApiSessionUser,
@@ -42,8 +44,8 @@ import {
   type ApiTaskTemplate,
   type ApiTeamCard,
   type ApiTeamDetail,
-  type ApiTeamMember,
 } from "@/lib/api-types";
+import { formatDate, formatDateTime, todayIso } from "@/lib/format";
 
 interface TeamDetailProps {
   teamId: string;
@@ -58,23 +60,13 @@ type ShowToast = (kind: ToastMessage["kind"], text: string) => void;
 const inputClass =
   "w-full px-3 py-2 bg-input-bg border border-input-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30";
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("pt-BR");
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
-}
-
-function formatSize(bytes: number | null) {
-  if (!bytes) return "";
-  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** Hoje em AAAA-MM-DD no fuso do navegador (mínimo do campo de prazo). */
-function todayIso() {
-  return new Date().toLocaleDateString("sv-SE");
-}
+/** Lembretes que o mentor pode marcar ao criar a tarefa (RF-17); 3 e 1 dia antes vêm marcados. */
+const REMINDER_CHOICES = [
+  { days: 7, label: "7 dias antes" },
+  { days: 3, label: "3 dias antes" },
+  { days: 1, label: "1 dia antes" },
+  { days: 0, label: "No dia" },
+];
 
 /**
  * RF-08 — detalhe da equipe para administrador e mentor: jornada (com as
@@ -140,10 +132,24 @@ export default function TeamDetail({ teamId, user, backHref }: TeamDetailProps) 
   }
 
   const { team, members, journey } = detail;
-  const leader = members.find((member) => member.role === "LEADER");
-  const others = members.filter((member) => member.role !== "LEADER");
   const canManage = user.role === "ADMIN" || user.role === "MENTOR";
   const submissionCount = tasks.reduce((sum, task) => sum + task.submissionCount, 0);
+
+  /** RN-02 — cria de uma vez as tarefas dos entregáveis finais que ainda não existem. */
+  async function createMissingDeliverables(dueDate: string, templateIds: string[]) {
+    let created = 0;
+    try {
+      for (const templateId of templateIds) {
+        await api.createTask({ teamId: team.id, templateId, dueDate, reminderDaysBefore: [3, 1] });
+        created += 1;
+      }
+      showToast("ok", `${created} ${created === 1 ? "tarefa criada" : "tarefas criadas"} e integrantes avisados por e-mail.`);
+    } catch (err) {
+      showToast("erro", describeError(err, "Não foi possível criar todas as tarefas."));
+    } finally {
+      await load();
+    }
+  }
 
   const tabs = [
     { key: "tarefas", label: "Tarefas", icon: FileText, count: tasks.length },
@@ -217,7 +223,10 @@ export default function TeamDetail({ teamId, user, backHref }: TeamDetailProps) 
                   <NotesTab
                     teamId={team.id}
                     notes={notes}
+                    canEdit={(note) => user.role === "ADMIN" || note.author?.id === user.id}
                     onAdded={(note) => setNotes((prev) => [note, ...prev])}
+                    onUpdated={(note) => setNotes((prev) => prev.map((item) => (item.id === note.id ? note : item)))}
+                    onDeleted={(noteId) => setNotes((prev) => prev.filter((item) => item.id !== noteId))}
                     onToast={showToast}
                   />
                 )}
@@ -226,35 +235,29 @@ export default function TeamDetail({ teamId, user, backHref }: TeamDetailProps) 
           </div>
 
           <div className="space-y-6">
-            {leader && <LeaderCard leader={leader} />}
-
-            {others.length > 0 && (
-              <div className="bg-card rounded-xl border border-card-border p-5">
-                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <Users className="w-4 h-4" /> Integrantes ({others.length})
-                </h3>
-                <div className="space-y-2">
-                  {others.map((member) => (
-                    <div key={member.id} className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-badge-muted-bg rounded-full flex items-center justify-center text-muted text-xs font-medium">
-                        {member.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm text-foreground truncate">{member.name}</p>
-                        <p className="text-xs text-muted-light truncate">{member.course ?? member.email}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <TeamPeopleCard
+              team={team}
+              members={members}
+              isAdmin={user.role === "ADMIN"}
+              editable={canManage && team.isActive}
+              onChanged={load}
+              onToast={showToast}
+            />
 
             <IdeaInfoCard team={team} />
+
+            <FinalDeliverablesCard
+              deliverables={detail.finalDeliverables}
+              onCreateMissing={
+                canManage && team.isActive && team.journeyStatus !== "REFERRED" ? createMissingDeliverables : undefined
+              }
+            />
 
             <ActionsCard
               team={team}
               journey={journey}
               isAdmin={user.role === "ADMIN"}
+              backHref={backHref}
               onChanged={load}
               onToast={showToast}
             />
@@ -290,6 +293,8 @@ function TasksTab({
   const [reviewing, setReviewing] = useState<{ taskId: string; decision: "APPROVED" | "REJECTED" } | null>(null);
   const [comment, setComment] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const editable = canManage && team.isActive && team.journeyStatus !== "REFERRED";
 
   const stageById = useMemo(() => new Map(journey.map((stage) => [stage.id, stage])), [journey]);
 
@@ -329,7 +334,7 @@ function TasksTab({
 
   return (
     <div className="space-y-3">
-      {canManage && team.isActive && team.journeyStatus !== "REFERRED" && (
+      {editable && (
         <div className="flex justify-end mb-2">
           <button
             type="button"
@@ -367,10 +372,26 @@ function TasksTab({
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h4 className="text-sm font-medium text-foreground">{task.title}</h4>
-                {task.description && <p className="text-xs text-muted mt-0.5">{task.description}</p>}
+                {task.description && <p className="text-xs text-muted mt-0.5 whitespace-pre-line">{task.description}</p>}
               </div>
-              <TaskStatusBadge status={task.status} />
+              <div className="flex shrink-0 items-center gap-1">
+                <TaskStatusBadge status={task.status} />
+                {editable && editingId !== task.id && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(task.id)}
+                    title="Editar tarefa, prazo e lembretes"
+                    aria-label={`Editar a tarefa ${task.title}`}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-light hover:bg-hover-bg hover:text-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
+            {editingId === task.id && (
+              <TaskEditor task={task} onClose={() => setEditingId(null)} onChanged={onChanged} onToast={onToast} />
+            )}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-3 text-xs text-muted-light">
               <DueChip dueDate={task.dueDate} done={task.status === "APPROVED" || task.status === "SUBMITTED"} />
               <span className="inline-flex items-center gap-1">
@@ -386,7 +407,7 @@ function TasksTab({
               )}
             </div>
 
-            {canManage && task.status === "SUBMITTED" && (
+            {canManage && team.isActive && task.status === "SUBMITTED" && (
               <div className="mt-3">
                 {review ? (
                   <div className="space-y-2">
@@ -477,6 +498,7 @@ function NewTaskForm({
     dueDate: "",
     isMandatory: true,
   });
+  const [reminderDays, setReminderDays] = useState<number[]>([3, 1]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -535,6 +557,7 @@ function NewTaskForm({
         description: form.description.trim() || undefined,
         dueDate: form.dueDate,
         isMandatory: form.isMandatory,
+        reminderDaysBefore: reminderDays,
       });
       await onCreated(result.message);
     } catch (err) {
@@ -630,6 +653,29 @@ function NewTaskForm({
           />
           Obrigatória — precisa estar aprovada para a equipe avançar de etapa
         </label>
+        <fieldset>
+          <legend className="text-xs text-muted mb-1.5">Lembretes por e-mail aos integrantes (às 9h)</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {REMINDER_CHOICES.map((choice) => (
+              <label key={choice.days} className="flex items-center gap-1.5 text-xs text-muted">
+                <input
+                  type="checkbox"
+                  checked={reminderDays.includes(choice.days)}
+                  onChange={(event) =>
+                    setReminderDays((current) =>
+                      event.target.checked ? [...current, choice.days] : current.filter((days) => days !== choice.days),
+                    )
+                  }
+                  className="h-4 w-4 accent-primary"
+                />
+                {choice.label}
+              </label>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-light">
+            Dá para ajustar depois, editando a tarefa. Lembretes cuja data já passou são ignorados.
+          </p>
+        </fieldset>
         <div className="flex gap-2 justify-end">
           <button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-muted hover:text-foreground">
             Cancelar
@@ -671,14 +717,6 @@ function SubmissionsTab({ tasks, onToast }: { tasks: ApiTask[]; onToast: ShowToa
     };
   }, [withSubmissions]);
 
-  async function download(attachment: ApiAttachment) {
-    try {
-      await api.downloadAttachment(attachment.url, attachment.name);
-    } catch (err) {
-      onToast("erro", describeError(err, "Não foi possível baixar o arquivo."));
-    }
-  }
-
   if (withSubmissions.length === 0) {
     return <p className="text-sm text-muted-light text-center py-8">Nenhuma entrega recebida ainda</p>;
   }
@@ -695,66 +733,14 @@ function SubmissionsTab({ tasks, onToast }: { tasks: ApiTask[]; onToast: ShowToa
 
   return (
     <div>
-      {loaded.details.map((task) => {
-        const versions = [...task.submissions].sort((a, b) => b.version - a.version);
-        return (
-          <div key={task.id} className="mb-5 last:mb-0">
-            <p className="text-xs font-medium text-muted mb-1">
-              {task.title} <span className="font-normal text-muted-light">· {task.stageName}</span>
-            </p>
-            {versions.map((submission, index) => (
-              <div key={submission.id} className="border-b border-divider py-3 last:border-0">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="flex items-center gap-2 font-medium text-foreground">
-                    Versão {submission.version}
-                    {index === 0 && versions.length > 1 && (
-                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">atual</span>
-                    )}
-                  </span>
-                  <span className="text-muted-light">
-                    {formatDateTime(submission.submittedAt)}
-                    {submission.submittedBy && ` · ${submission.submittedBy.name}`}
-                  </span>
-                </div>
-                {submission.note && <p className="mt-1 text-xs text-muted">“{submission.note}”</p>}
-                <ul className="mt-2 space-y-1.5">
-                  {submission.attachments.map((attachment) => (
-                    <li key={attachment.id}>
-                      {attachment.type === "FILE" ? (
-                        <button
-                          type="button"
-                          onClick={() => void download(attachment)}
-                          className="inline-flex items-center gap-2 text-sm text-foreground hover:text-primary"
-                        >
-                          <FileText className="w-4 h-4 text-blue-500" />
-                          {attachment.name}
-                          <span className="text-xs text-muted-light">{formatSize(attachment.size)}</span>
-                        </button>
-                      ) : /^https?:\/\//i.test(attachment.url) ? (
-                        // Link externo vindo do aluno: só http(s) vira link clicável.
-                        <a
-                          href={attachment.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-                        >
-                          <Link2 className="w-4 h-4" />
-                          {attachment.name}
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      ) : (
-                        <span className="inline-flex items-center gap-2 text-sm text-muted">
-                          <Link2 className="w-4 h-4" /> {attachment.name}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        );
-      })}
+      {loaded.details.map((task) => (
+        <div key={task.id} className="mb-5 last:mb-0">
+          <p className="text-xs font-medium text-muted mb-2">
+            {task.title} <span className="font-normal text-muted-light">· {task.stageName}</span>
+          </p>
+          <SubmissionVersions submissions={task.submissions} onError={(message) => onToast("erro", message)} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -829,16 +815,51 @@ function HistoryTab({ detail }: { detail: ApiTeamDetail }) {
 function NotesTab({
   teamId,
   notes,
+  canEdit,
   onAdded,
+  onUpdated,
+  onDeleted,
   onToast,
 }: {
   teamId: string;
   notes: ApiNote[];
+  /** Só o autor (ou um admin) edita e exclui — a API confere de novo. */
+  canEdit: (note: ApiNote) => boolean;
   onAdded: (note: ApiNote) => void;
+  onUpdated: (note: ApiNote) => void;
+  onDeleted: (noteId: string) => void;
   onToast: ShowToast;
 }) {
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; content: string } | null>(null);
+  const [busyNoteId, setBusyNoteId] = useState<string | null>(null);
+
+  async function saveEdit() {
+    if (!editing || !editing.content.trim()) return;
+    setBusyNoteId(editing.id);
+    try {
+      const result = await api.updateNote(teamId, editing.id, editing.content.trim());
+      onUpdated(result.note);
+      setEditing(null);
+    } catch (err) {
+      onToast("erro", describeError(err, "Não foi possível salvar a anotação."));
+    } finally {
+      setBusyNoteId(null);
+    }
+  }
+
+  async function remove(noteId: string) {
+    setBusyNoteId(noteId);
+    try {
+      await api.deleteNote(teamId, noteId);
+      onDeleted(noteId);
+    } catch (err) {
+      onToast("erro", describeError(err, "Não foi possível excluir a anotação."));
+    } finally {
+      setBusyNoteId(null);
+    }
+  }
 
   async function add() {
     if (!content.trim() || busy) return;
@@ -878,11 +899,63 @@ function NotesTab({
       </div>
       {notes.length === 0 && <p className="text-sm text-muted-light text-center py-4">Nenhuma anotação</p>}
       {notes.map((note) => (
-        <div key={note.id} className="border-l-2 border-primary/30 pl-4 py-3 mb-3">
-          <p className="text-sm text-foreground whitespace-pre-line">{note.content}</p>
-          <p className="text-xs text-muted-light mt-1">
-            {note.author?.name ?? "Autor removido"} &middot; {formatDateTime(note.createdAt)}
-          </p>
+        <div key={note.id} className="group border-l-2 border-primary/30 pl-4 py-3 mb-3">
+          {editing?.id === note.id ? (
+            <div className="space-y-2">
+              <textarea
+                value={editing.content}
+                onChange={(event) => setEditing({ id: note.id, content: event.target.value })}
+                rows={3}
+                aria-label="Editar anotação"
+                className={`${inputClass} resize-none`}
+              />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setEditing(null)} className="px-3 py-1 text-xs text-muted hover:text-foreground">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveEdit()}
+                  disabled={!editing.content.trim() || busyNoteId === note.id}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-xs text-white hover:bg-primary-dark disabled:opacity-40"
+                >
+                  {busyNoteId === note.id && <Loader2 className="h-3 w-3 animate-spin" />}
+                  Salvar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-foreground whitespace-pre-line">{note.content}</p>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-light">
+                  {note.author?.name ?? "Autor removido"} &middot; {formatDateTime(note.createdAt)}
+                  {note.updatedAt !== note.createdAt && " · editada"}
+                </p>
+                {canEdit(note) && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ id: note.id, content: note.content })}
+                      aria-label="Editar anotação"
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-light hover:bg-hover-bg hover:text-foreground"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void remove(note.id)}
+                      disabled={busyNoteId === note.id}
+                      aria-label="Excluir anotação"
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-light hover:bg-hover-bg hover:text-danger disabled:opacity-40"
+                    >
+                      {busyNoteId === note.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       ))}
     </div>
@@ -892,35 +965,6 @@ function NotesTab({
 // ---------------------------------------------------------------------------
 // Coluna lateral
 // ---------------------------------------------------------------------------
-
-function LeaderCard({ leader }: { leader: ApiTeamMember }) {
-  return (
-    <div className="bg-card rounded-xl border border-card-border p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-4">Líder da equipe</h3>
-      <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-medium">
-            {leader.name.charAt(0)}
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground truncate">{leader.name}</p>
-            <p className="text-xs text-muted">
-              {[leader.course, leader.semester].filter(Boolean).join(" · ") || "Curso não informado"}
-            </p>
-          </div>
-        </div>
-        <p className="flex items-center gap-2 text-sm text-muted break-all">
-          <Mail className="w-3.5 h-3.5 shrink-0 text-muted-light" /> {leader.email}
-        </p>
-        {leader.phone && (
-          <p className="flex items-center gap-2 text-sm text-muted">
-            <Phone className="w-3.5 h-3.5 text-muted-light" /> {leader.phone}
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function IdeaInfoCard({ team }: { team: ApiTeamCard }) {
   const rows = [
@@ -950,27 +994,44 @@ function IdeaInfoCard({ team }: { team: ApiTeamCard }) {
 }
 
 /**
- * Lembrete manual (RF-20) e encaminhamento ao InovAMF — este só a
- * coordenação faz, "depois das 6 etapas" (ou da última extra).
+ * Lembrete manual (RF-20), encaminhamento ao InovAMF — este só a
+ * coordenação faz, "depois das 6 etapas" (ou da última extra) — e a
+ * exclusão lógica da equipe (Q4, só admin).
  */
 function ActionsCard({
   team,
   journey,
   isAdmin,
+  backHref,
   onChanged,
   onToast,
 }: {
   team: ApiTeamCard;
   journey: ApiJourneyStage[];
   isAdmin: boolean;
+  backHref: string;
   onChanged: () => Promise<void>;
   onToast: ShowToast;
 }) {
+  const router = useRouter();
   const [reminderOpen, setReminderOpen] = useState(false);
   const [subject, setSubject] = useState(`Lembrete — ${team.name}`);
   const [message, setMessage] = useState("");
   const [confirmRefer, setConfirmRefer] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  async function deleteTeam() {
+    setBusy(true);
+    try {
+      await api.deleteTeam(team.id);
+      setConfirmDelete(false);
+      router.push(backHref);
+    } catch (err) {
+      onToast("erro", describeError(err, "Não foi possível excluir a equipe."));
+      setBusy(false);
+    }
+  }
 
   const ready = team.journeyStatus === "READY_FOR_INOVAMF";
   const referred = team.journeyStatus === "REFERRED";
@@ -1105,7 +1166,37 @@ function ActionsCard({
         ) : ready ? (
           <p className="text-xs text-success pt-1">Equipe pronta para o InovAMF — a coordenação faz o encaminhamento.</p>
         ) : null}
+
+        {!team.isActive && (
+          <p className="text-xs text-muted pt-1">Equipe excluída: fica só para consulta da coordenação.</p>
+        )}
+
+        {isAdmin && team.isActive && (
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm text-danger transition-colors hover:bg-danger/5"
+          >
+            <Trash2 className="h-4 w-4" /> Excluir equipe
+          </button>
+        )}
       </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Excluir a equipe ${team.name}?`}
+          description={
+            <>
+              A equipe sai das listas, do quadro e dos relatórios, e os integrantes ficam livres para entrar em outra
+              equipe. O histórico (tarefas, entregas, avaliações) é mantido para a coordenação — é uma exclusão lógica.
+            </>
+          }
+          confirmLabel="Excluir equipe"
+          busy={busy}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => void deleteTeam()}
+        />
+      )}
     </div>
   );
 }

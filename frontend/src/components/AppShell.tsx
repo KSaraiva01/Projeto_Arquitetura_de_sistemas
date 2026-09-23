@@ -9,8 +9,24 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import Sidebar, { type SidebarRole } from "./Sidebar";
+import { homePathFor, type ApiSessionUser } from "@/lib/api-types";
+import { useSession } from "@/lib/session";
+
+/**
+ * "Cada um tem suas rotas" (nota da RF-06/RF-22): cada área do sistema só
+ * abre para o perfil dela. Líder e integrante são ambos STUDENT — o papel na
+ * equipe decide entre /aluno e /integrante. O backend continua sendo quem
+ * garante o escopo dos dados; isto só leva cada pessoa para a área certa.
+ */
+const AREA_ALLOWS: Record<SidebarRole, (user: ApiSessionUser) => boolean> = {
+  admin: (user) => user.role === "ADMIN",
+  mentor: (user) => user.role === "MENTOR",
+  aluno: (user) => user.role === "STUDENT" && homePathFor(user) === "/aluno",
+  integrante: (user) => user.role === "STUDENT" && homePathFor(user) === "/integrante",
+};
 
 interface ShellState {
   /** Sidebar recolhida em ícones (só no desktop). */
@@ -75,6 +91,16 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, loading } = useSession();
+  const allowed = Boolean(user && AREA_ALLOWS[role](user));
+
+  // Sem sessão volta ao login; perfil de outra área vai para a própria.
+  useEffect(() => {
+    if (loading) return;
+    if (!user) router.replace("/");
+    else if (!AREA_ALLOWS[role](user)) router.replace(homePathFor(user));
+  }, [user, loading, role, router]);
 
   const collapsed = useSyncExternalStore(
     subscribeCollapsed,
@@ -123,7 +149,15 @@ export default function AppShell({
             collapsed ? "md:ml-[72px]" : "md:ml-64"
           }`}
         >
-          {children}
+          {/* Enquanto a sessão carrega, cada página mostra o próprio esqueleto;
+              de outra área, nada aparece até o redirecionamento. */}
+          {loading || allowed ? (
+            children
+          ) : (
+            <div role="status" className="flex items-center justify-center gap-2 p-10 text-sm text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" /> Redirecionando...
+            </div>
+          )}
         </div>
       </div>
     </ShellContext.Provider>

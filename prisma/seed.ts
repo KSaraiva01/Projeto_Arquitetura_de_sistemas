@@ -632,6 +632,8 @@ async function seedDemo(admin: Pessoa) {
         await auditar(tx, admin.id, "EQUIPE_MENTOR_ATRIBUIDO", "equipe", equipe.id, { mentorId: mentor.id }, atribuidoEm);
 
         const acompanham: Pessoa[] = mentor.email === admin.email ? [admin] : [mentor, admin];
+        // O link do e-mail leva cada um para a própria área (mentor ou admin), como no serviço.
+        const perfilDe = (pessoa: Pessoa) => (pessoa.id === mentor.id ? ("MENTOR" as const) : ("ADMIN" as const));
 
         // Tarefas (RF-12) com lembretes (RF-17), entregas (RF-14/16), avaliações (RF-15) e os e-mails de cada passo.
         for (const t of eq.tarefas) {
@@ -675,7 +677,7 @@ async function seedDemo(admin: Pessoa) {
             if (enviado) {
               await registrarEnvio(tx, integrantes, "PRAZO_PROXIMO", lembrarEm, (pessoa) => ({
                 modelo: emailPrazoProximo(pessoa.nome, eq.nome, tarefa.titulo, prazo, diasAntes),
-                chave: `PRAZO_PROXIMO:lembrete:${lembrete.id}:usuario:${pessoa.id}`,
+                chave: `PRAZO_PROXIMO:lembrete:${lembrete.id}:prazo:${prazo.getTime()}:usuario:${pessoa.id}`,
                 equipeId: equipe.id,
                 tarefaId: tarefa.id,
               }));
@@ -705,7 +707,7 @@ async function seedDemo(admin: Pessoa) {
               },
             });
             await registrarEnvio(tx, acompanham, "ENTREGA_RECEBIDA", enviadaEm, (pessoa) => ({
-              modelo: emailEntregaRecebida(pessoa.nome, eq.nome, tarefa.titulo, 1, lider.nome, equipe.id),
+              modelo: emailEntregaRecebida(pessoa.nome, eq.nome, tarefa.titulo, 1, lider.nome, equipe.id, perfilDe(pessoa)),
               chave: `ENTREGA_RECEBIDA:entrega:${entrega.id}:usuario:${pessoa.id}`,
               equipeId: equipe.id,
               tarefaId: tarefa.id,
@@ -738,7 +740,7 @@ async function seedDemo(admin: Pessoa) {
               tarefaId: tarefa.id,
             }));
             await registrarEnvio(tx, acompanham, "TAREFA_ATRASADA", marcadaEm, (pessoa) => ({
-              modelo: emailTarefaAtrasada(pessoa.nome, eq.nome, tarefa.titulo, prazo, equipe.id),
+              modelo: emailTarefaAtrasada(pessoa.nome, eq.nome, tarefa.titulo, prazo, equipe.id, perfilDe(pessoa)),
               chave: `TAREFA_ATRASADA:tarefa:${tarefa.id}:prazo:${prazo.getTime()}:usuario:${pessoa.id}`,
               equipeId: equipe.id,
               tarefaId: tarefa.id,

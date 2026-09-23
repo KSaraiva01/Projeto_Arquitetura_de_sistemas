@@ -1,12 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2, ArrowLeft, CheckCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Plus, Trash2 } from "lucide-react";
 import InfoHubLogo from "@/components/InfoHubLogo";
+import PasswordRules from "@/components/PasswordRules";
 import ThemeToggle from "@/components/ThemeToggle";
-import { AREAS, COURSES } from "@/lib/mock-data";
-import { SEMESTERS, HOW_DID_YOU_HEAR_OPTIONS } from "@/lib/types";
+import { api, ApiError, describeError } from "@/lib/api";
+import { IDEA_STAGE_LABELS, type ApiIdeaStage } from "@/lib/api-types";
+import { passwordIsValid } from "@/lib/password";
+import { HOW_DID_YOU_HEAR_OPTIONS, SEMESTERS } from "@/lib/types";
 
 interface TeamMemberInput {
   name: string;
@@ -14,8 +17,39 @@ interface TeamMemberInput {
   course: string;
 }
 
+type Option = { id: string; name: string };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Campo da API (422) → campo do formulário, para o erro aparecer no lugar certo. */
+const API_FIELD_TO_FORM: Record<string, string> = {
+  "team.name": "ideaName",
+  "team.description": "description",
+  "team.areaId": "area",
+  "team.ideaStage": "ideaStage",
+  "team.howDidYouHear": "howDidYouHear",
+  "leader.name": "name",
+  "leader.email": "email",
+  "leader.phone": "phone",
+  "leader.course": "course",
+  "leader.semester": "semester",
+  "leader.password": "password",
+  lgpdConsent: "lgpdConsent",
+};
+
+/**
+ * RF-02, RF-04 e RF-05 — formulário inicial da ideia. Ao enviar, a API cria
+ * a conta do líder (com esta senha), as contas dos colegas (que recebem o
+ * link de ativação por e-mail) e a equipe na Etapa 1, e avisa a coordenação.
+ * O líder só entra depois de confirmar o e-mail pelo link que recebe.
+ */
 export default function CadastroPage() {
-  const [submitted, setSubmitted] = useState(false);
+  const [result, setResult] = useState<{ message: string; email: string } | null>(null);
+  const [areas, setAreas] = useState<Option[]>([]);
+  const [courses, setCourses] = useState<Option[]>([]);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const [formData, setFormData] = useState({
     name: "",
@@ -26,7 +60,7 @@ export default function CadastroPage() {
     ideaName: "",
     description: "",
     area: "",
-    ideaStage: "",
+    ideaStage: "" as ApiIdeaStage | "",
     howDidYouHear: "",
     password: "",
     confirmPassword: "",
@@ -36,22 +70,34 @@ export default function CadastroPage() {
   const [members, setMembers] = useState<TeamMemberInput[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Áreas e cursos vêm do banco (a mesma lista que a API valida).
+  useEffect(() => {
+    Promise.all([api.areas(), api.courses()]).then(
+      ([areaList, courseList]) => {
+        setAreas(areaList.data);
+        setCourses(courseList.data);
+      },
+      (err: unknown) => setOptionsError(describeError(err, "Não foi possível carregar as áreas e os cursos. A API está no ar?")),
+    );
+  }, []);
+
   function addMember() {
     setMembers([...members, { name: "", email: "", course: "" }]);
   }
 
   function removeMember(idx: number) {
     setMembers(members.filter((_, i) => i !== idx));
+    clearError(`member-${idx}`);
   }
 
   function updateMember(idx: number, field: keyof TeamMemberInput, value: string) {
     const updated = [...members];
     updated[idx] = { ...updated[idx], [field]: value };
     setMembers(updated);
+    clearError(`member-${idx}`);
   }
 
-  function updateField(field: string, value: string) {
-    setFormData({ ...formData, [field]: value });
+  function clearError(field: string) {
     if (errors[field]) {
       const newErrors = { ...errors };
       delete newErrors[field];
@@ -59,9 +105,14 @@ export default function CadastroPage() {
     }
   }
 
+  function updateField(field: keyof typeof formData, value: string) {
+    setFormData({ ...formData, [field]: value });
+    clearError(field);
+  }
+
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
-    const required: [string, string][] = [
+    const required: [keyof typeof formData, string][] = [
       ["name", "Nome completo"],
       ["email", "E-mail"],
       ["phone", "Telefone/WhatsApp"],
@@ -76,14 +127,34 @@ export default function CadastroPage() {
     ];
 
     for (const [key, label] of required) {
-      if (!formData[key as keyof typeof formData]) {
+      if (!formData[key].trim()) {
         newErrors[key] = `${label} é obrigatório`;
       }
     }
 
+    if (formData.name && formData.name.trim().length < 3) newErrors.name = "Informe o nome completo";
+    if (formData.email && !EMAIL_RE.test(formData.email.trim())) newErrors.email = "Informe um e-mail válido";
+    if (formData.phone && formData.phone.replace(/\D/g, "").length < 8) newErrors.phone = "Informe o telefone com DDD";
+    if (formData.ideaName && formData.ideaName.trim().length < 3) newErrors.ideaName = "Dê um nome à ideia";
+    if (formData.description && formData.description.trim().length < 20) {
+      newErrors.description = "Descreva a ideia com um pouco mais de detalhe (ao menos 20 caracteres)";
+    }
+    if (formData.password && !passwordIsValid(formData.password)) {
+      newErrors.password = "A senha ainda não cumpre as regras abaixo";
+    }
     if (formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword) {
       newErrors.confirmPassword = "As senhas não coincidem";
     }
+
+    members.forEach((member, idx) => {
+      const empty = !member.name.trim() && !member.email.trim() && !member.course;
+      if (empty) return; // linha em branco é ignorada no envio
+      if (member.name.trim().length < 3 || !EMAIL_RE.test(member.email.trim()) || !member.course) {
+        newErrors[`member-${idx}`] = "Preencha nome, e-mail válido e curso do colega (ou remova a linha)";
+      } else if (member.email.trim().toLowerCase() === formData.email.trim().toLowerCase()) {
+        newErrors[`member-${idx}`] = "Este é o seu e-mail — você já é o líder da equipe";
+      }
+    });
 
     if (!lgpdConsent) {
       newErrors.lgpdConsent = "É necessário concordar com o tratamento dos dados para continuar";
@@ -93,30 +164,68 @@ export default function CadastroPage() {
     return Object.keys(newErrors).length === 0;
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (validate()) {
-      setSubmitted(true);
+    setFormError("");
+    if (!validate() || submitting) return;
+
+    setSubmitting(true);
+    try {
+      const response = await api.registerTeam({
+        team: {
+          name: formData.ideaName.trim(),
+          description: formData.description.trim(),
+          areaId: formData.area,
+          ideaStage: formData.ideaStage as ApiIdeaStage,
+          ...(formData.howDidYouHear ? { howDidYouHear: formData.howDidYouHear } : {}),
+        },
+        leader: {
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          course: formData.course,
+          semester: formData.semester,
+          password: formData.password,
+        },
+        members: members
+          .filter((member) => member.name.trim() || member.email.trim() || member.course)
+          .map((member) => ({ name: member.name.trim(), email: member.email.trim(), course: member.course })),
+        lgpdConsent: true,
+      });
+      setResult({ message: response.message, email: formData.email.trim() });
+      window.scrollTo({ top: 0 });
+    } catch (err) {
+      if (err instanceof ApiError && err.fields?.length) {
+        const fromApi: Record<string, string> = {};
+        for (const { field, message } of err.fields) {
+          const member = /^members\.(\d+)\./.exec(field);
+          fromApi[member ? `member-${member[1]}` : (API_FIELD_TO_FORM[field] ?? field)] = message;
+        }
+        setErrors(fromApi);
+        setFormError("Alguns campos estão inválidos. Confira os destaques acima.");
+      } else {
+        setFormError(describeError(err, "Não foi possível conectar à API. Tente de novo em instantes."));
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  if (submitted) {
+  if (result) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <div className="bg-card rounded-2xl shadow-sm border border-card-border p-8 max-w-md w-full text-center">
+        <div className="animate-rise bg-card rounded-2xl shadow-sm border border-card-border p-8 max-w-md w-full text-center">
           <div className="w-16 h-16 bg-green-500/15 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-success" />
           </div>
           <h2 className="text-2xl font-bold text-foreground mb-2">Ideia enviada!</h2>
-          <p className="text-muted mb-6">
-            Sua ideia foi cadastrada com sucesso. A equipe do InfoHub irá analisar sua proposta e entrar em contato em breve.
-          </p>
+          <p className="text-muted mb-4">{result.message}</p>
           <p className="text-sm text-muted-light mb-6">
-            Enviamos um link de confirmação para <strong className="text-foreground">{formData.email}</strong>.
-            Confirme seu e-mail para conseguir entrar.
+            Não achou o e-mail em <strong className="text-foreground">{result.email}</strong>? Confira o spam. Na tela
+            de login, ao tentar entrar, dá para pedir um novo link de confirmação.
           </p>
           <Link
-            href="/"
+            href="/#login"
             className="inline-block bg-primary text-white px-6 py-2.5 rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm"
           >
             Ir para o login
@@ -131,12 +240,14 @@ export default function CadastroPage() {
       errors[field] ? "border-red-400" : "border-input-border"
     }`;
 
+  const loadingOptions = !optionsError && (areas.length === 0 || courses.length === 0);
+
   return (
     <div className="min-h-screen bg-background">
       <div className="bg-card border-b border-card-border px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="text-muted-light hover:text-foreground">
+            <Link href="/" aria-label="Voltar ao início" className="text-muted-light hover:text-foreground">
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <InfoHubLogo size="sm" />
@@ -154,24 +265,33 @@ export default function CadastroPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        {optionsError && (
+          <div role="alert" className="mb-6 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            {optionsError}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} noValidate className="space-y-8">
           <section className="bg-card rounded-xl border border-card-border p-6">
             <h2 className="text-lg font-semibold text-foreground mb-4">Dados pessoais</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-foreground mb-1">Nome completo *</label>
-                <input type="text" value={formData.name} onChange={(e) => updateField("name", e.target.value)} className={inputClass("name")} />
+                <label htmlFor="cad-name" className="block text-sm font-medium text-foreground mb-1">Nome completo *</label>
+                <input id="cad-name" type="text" autoComplete="name" value={formData.name} onChange={(e) => updateField("name", e.target.value)} className={inputClass("name")} />
                 {errors.name && <p className="text-xs text-danger mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">E-mail *</label>
-                <input type="email" value={formData.email} onChange={(e) => updateField("email", e.target.value)} className={inputClass("email")} />
+                <label htmlFor="cad-email" className="block text-sm font-medium text-foreground mb-1">E-mail *</label>
+                <input id="cad-email" type="email" autoComplete="email" value={formData.email} onChange={(e) => updateField("email", e.target.value)} className={inputClass("email")} />
                 {errors.email && <p className="text-xs text-danger mt-1">{errors.email}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Telefone/WhatsApp *</label>
+                <label htmlFor="cad-phone" className="block text-sm font-medium text-foreground mb-1">Telefone/WhatsApp *</label>
                 <input
+                  id="cad-phone"
                   type="tel"
+                  autoComplete="tel"
                   value={formData.phone}
                   onChange={(e) => updateField("phone", e.target.value)}
                   placeholder="(00) 00000-0000"
@@ -180,16 +300,16 @@ export default function CadastroPage() {
                 {errors.phone && <p className="text-xs text-danger mt-1">{errors.phone}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Curso *</label>
-                <select value={formData.course} onChange={(e) => updateField("course", e.target.value)} className={inputClass("course")}>
-                  <option value="">Selecione...</option>
-                  {COURSES.map((c) => <option key={c} value={c}>{c}</option>)}
+                <label htmlFor="cad-course" className="block text-sm font-medium text-foreground mb-1">Curso *</label>
+                <select id="cad-course" value={formData.course} onChange={(e) => updateField("course", e.target.value)} className={inputClass("course")}>
+                  <option value="">{loadingOptions ? "Carregando..." : "Selecione..."}</option>
+                  {courses.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
                 {errors.course && <p className="text-xs text-danger mt-1">{errors.course}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Semestre/período *</label>
-                <select value={formData.semester} onChange={(e) => updateField("semester", e.target.value)} className={inputClass("semester")}>
+                <label htmlFor="cad-semester" className="block text-sm font-medium text-foreground mb-1">Semestre/período *</label>
+                <select id="cad-semester" value={formData.semester} onChange={(e) => updateField("semester", e.target.value)} className={inputClass("semester")}>
                   <option value="">Selecione...</option>
                   {SEMESTERS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -202,34 +322,64 @@ export default function CadastroPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Equipe</h2>
-                <p className="text-sm text-muted">Adicione os colegas que farão parte da equipe (opcional)</p>
+                <p className="text-sm text-muted">
+                  Adicione os colegas que farão parte da equipe (opcional). Cada um recebe um e-mail para criar a
+                  própria senha.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={addMember}
-                className="flex items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium"
+                className="flex shrink-0 items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium"
               >
                 <Plus className="w-4 h-4" /> Adicionar
               </button>
             </div>
             {members.length === 0 && (
               <p className="text-sm text-muted-light py-4 text-center border border-dashed border-card-border rounded-lg">
-                Nenhum integrante adicionado. Você pode adicionar depois.
+                Nenhum integrante adicionado. Você pode adicionar depois, pela sua área no sistema.
               </p>
             )}
             {members.map((member, idx) => (
-              <div key={idx} className="flex gap-3 items-start mt-3">
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <input type="text" value={member.name} onChange={(e) => updateMember(idx, "name", e.target.value)} placeholder="Nome" className={inputClass("")} />
-                  <input type="email" value={member.email} onChange={(e) => updateMember(idx, "email", e.target.value)} placeholder="E-mail" className={inputClass("")} />
-                  <select value={member.course} onChange={(e) => updateMember(idx, "course", e.target.value)} className={inputClass("")}>
-                    <option value="">Curso...</option>
-                    {COURSES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
+              <div key={idx} className="mt-3">
+                <div className="flex gap-3 items-start">
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input
+                      type="text"
+                      value={member.name}
+                      onChange={(e) => updateMember(idx, "name", e.target.value)}
+                      placeholder="Nome"
+                      aria-label={`Nome do colega ${idx + 1}`}
+                      className={inputClass(`member-${idx}`)}
+                    />
+                    <input
+                      type="email"
+                      value={member.email}
+                      onChange={(e) => updateMember(idx, "email", e.target.value)}
+                      placeholder="E-mail"
+                      aria-label={`E-mail do colega ${idx + 1}`}
+                      className={inputClass(`member-${idx}`)}
+                    />
+                    <select
+                      value={member.course}
+                      onChange={(e) => updateMember(idx, "course", e.target.value)}
+                      aria-label={`Curso do colega ${idx + 1}`}
+                      className={inputClass(`member-${idx}`)}
+                    >
+                      <option value="">Curso...</option>
+                      {courses.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeMember(idx)}
+                    aria-label={`Remover o colega ${idx + 1}`}
+                    className="p-2 text-muted-light hover:text-danger mt-0.5"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <button type="button" onClick={() => removeMember(idx)} className="p-2 text-muted-light hover:text-danger mt-0.5">
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                {errors[`member-${idx}`] && <p className="text-xs text-danger mt-1">{errors[`member-${idx}`]}</p>}
               </div>
             ))}
           </section>
@@ -238,13 +388,14 @@ export default function CadastroPage() {
             <h2 className="text-lg font-semibold text-foreground mb-4">Sobre a ideia</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Nome da ideia/projeto *</label>
-                <input type="text" value={formData.ideaName} onChange={(e) => updateField("ideaName", e.target.value)} className={inputClass("ideaName")} />
+                <label htmlFor="cad-idea" className="block text-sm font-medium text-foreground mb-1">Nome da ideia/projeto *</label>
+                <input id="cad-idea" type="text" value={formData.ideaName} onChange={(e) => updateField("ideaName", e.target.value)} className={inputClass("ideaName")} />
                 {errors.ideaName && <p className="text-xs text-danger mt-1">{errors.ideaName}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Descrição da ideia *</label>
+                <label htmlFor="cad-description" className="block text-sm font-medium text-foreground mb-1">Descrição da ideia *</label>
                 <textarea
+                  id="cad-description"
                   rows={4}
                   value={formData.description}
                   onChange={(e) => updateField("description", e.target.value)}
@@ -255,28 +406,28 @@ export default function CadastroPage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Área/setor *</label>
-                  <select value={formData.area} onChange={(e) => updateField("area", e.target.value)} className={inputClass("area")}>
-                    <option value="">Selecione...</option>
-                    {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                  <label htmlFor="cad-area" className="block text-sm font-medium text-foreground mb-1">Área/setor *</label>
+                  <select id="cad-area" value={formData.area} onChange={(e) => updateField("area", e.target.value)} className={inputClass("area")}>
+                    <option value="">{loadingOptions ? "Carregando..." : "Selecione..."}</option>
+                    {areas.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                   {errors.area && <p className="text-xs text-danger mt-1">{errors.area}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Estágio atual *</label>
-                  <select value={formData.ideaStage} onChange={(e) => updateField("ideaStage", e.target.value)} className={inputClass("ideaStage")}>
+                  <label htmlFor="cad-stage" className="block text-sm font-medium text-foreground mb-1">Estágio atual *</label>
+                  <select id="cad-stage" value={formData.ideaStage} onChange={(e) => updateField("ideaStage", e.target.value)} className={inputClass("ideaStage")}>
                     <option value="">Selecione...</option>
-                    <option value="apenas_ideia">Apenas ideia</option>
-                    <option value="prototipo">Protótipo</option>
-                    <option value="mvp_desenvolvimento">MVP em desenvolvimento</option>
-                    <option value="mvp_pronto">MVP pronto</option>
+                    {(Object.keys(IDEA_STAGE_LABELS) as ApiIdeaStage[]).map((stage) => (
+                      <option key={stage} value={stage}>{IDEA_STAGE_LABELS[stage]}</option>
+                    ))}
                   </select>
                   {errors.ideaStage && <p className="text-xs text-danger mt-1">{errors.ideaStage}</p>}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Como conheceu o InfoHub? (opcional)</label>
+                <label htmlFor="cad-heard" className="block text-sm font-medium text-foreground mb-1">Como conheceu o InfoHub? (opcional)</label>
                 <select
+                  id="cad-heard"
                   value={formData.howDidYouHear}
                   onChange={(e) => updateField("howDidYouHear", e.target.value)}
                   className={inputClass("howDidYouHear")}
@@ -289,19 +440,23 @@ export default function CadastroPage() {
           </section>
 
           <section className="bg-card rounded-xl border border-card-border p-6">
-            <h2 className="text-lg font-semibold text-foreground mb-4">Criar acesso</h2>
+            <h2 className="text-lg font-semibold text-foreground mb-1">Criar acesso</h2>
+            <p className="text-sm text-muted mb-4">
+              Você vai entrar com o seu e-mail e esta senha, depois de confirmar o e-mail pelo link que enviaremos.
+            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Senha *</label>
-                <input type="password" value={formData.password} onChange={(e) => updateField("password", e.target.value)} className={inputClass("password")} />
+                <label htmlFor="cad-password" className="block text-sm font-medium text-foreground mb-1">Senha *</label>
+                <input id="cad-password" type="password" autoComplete="new-password" value={formData.password} onChange={(e) => updateField("password", e.target.value)} className={inputClass("password")} />
                 {errors.password && <p className="text-xs text-danger mt-1">{errors.password}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Confirmar senha *</label>
-                <input type="password" value={formData.confirmPassword} onChange={(e) => updateField("confirmPassword", e.target.value)} className={inputClass("confirmPassword")} />
+                <label htmlFor="cad-password2" className="block text-sm font-medium text-foreground mb-1">Confirmar senha *</label>
+                <input id="cad-password2" type="password" autoComplete="new-password" value={formData.confirmPassword} onChange={(e) => updateField("confirmPassword", e.target.value)} className={inputClass("confirmPassword")} />
                 {errors.confirmPassword && <p className="text-xs text-danger mt-1">{errors.confirmPassword}</p>}
               </div>
             </div>
+            <PasswordRules value={formData.password} />
           </section>
 
           <section className="bg-card rounded-xl border border-card-border p-6">
@@ -311,25 +466,38 @@ export default function CadastroPage() {
                 checked={lgpdConsent}
                 onChange={(e) => {
                   setLgpdConsent(e.target.checked);
-                  if (errors.lgpdConsent) {
-                    const newErrors = { ...errors };
-                    delete newErrors.lgpdConsent;
-                    setErrors(newErrors);
-                  }
+                  clearError("lgpdConsent");
                 }}
-                className="mt-0.5 rounded border-input-border"
+                className="mt-0.5 h-4 w-4 accent-primary"
               />
               <span className="text-sm text-muted">
-                Li e concordo com o tratamento dos meus dados pessoais e dos dados dos integrantes da equipe pelo InfoHub,
-                conforme a Lei Geral de Proteção de Dados (LGPD), para fins de acompanhamento da jornada no programa. *
+                Li e concordo com a{" "}
+                <Link href="/privacidade" target="_blank" className="font-medium text-primary hover:text-primary-dark">
+                  política de privacidade
+                </Link>{" "}
+                e com o tratamento dos meus dados pessoais pelo InfoHub, conforme a Lei Geral de Proteção de Dados
+                (LGPD), para fins de acompanhamento da jornada no programa. Os colegas que eu incluir aceitam a
+                política ao ativar a própria conta. *
               </span>
             </label>
             {errors.lgpdConsent && <p className="text-xs text-danger mt-2">{errors.lgpdConsent}</p>}
           </section>
 
+          {formError && (
+            <p key={formError} role="alert" className="animate-shake flex items-start gap-1.5 text-sm text-danger">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              {formError}
+            </p>
+          )}
+
           <div className="flex items-center gap-4">
-            <button type="submit" className="bg-primary text-white px-8 py-3 rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm">
-              Enviar ideia
+            <button
+              type="submit"
+              disabled={submitting || Boolean(optionsError)}
+              className="inline-flex items-center gap-2 bg-primary text-white px-8 py-3 rounded-lg font-medium hover:bg-primary-dark transition-colors text-sm disabled:opacity-60"
+            >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? "Enviando..." : "Enviar ideia"}
             </button>
             <Link href="/" className="text-sm text-muted hover:text-foreground">
               Cancelar

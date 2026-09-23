@@ -47,6 +47,15 @@ usersRouter.patch("/:id/status", validarParams(userIdParamSchema), validarBody(u
   res.json({ user: await service.definirStatus(getParams<UserIdParam>(res).id, isActive, ator(req)) });
 });
 
+// Destrava quem não consegue entrar: reenvia o link que falta ou confirma o e-mail na mão.
+usersRouter.post("/:id/resend-access", validarParams(userIdParamSchema), async (req, res) => {
+  res.json(await service.reenviarAcesso(getParams<UserIdParam>(res).id, ator(req)));
+});
+
+usersRouter.post("/:id/confirm-email", validarParams(userIdParamSchema), async (req, res) => {
+  res.json(await service.confirmarEmailManualmente(getParams<UserIdParam>(res).id, ator(req)));
+});
+
 usersRouter.delete("/:id", validarParams(userIdParamSchema), async (req, res) => {
   const resultado = await service.anonimizarUsuario(getParams<UserIdParam>(res).id, ator(req));
   res.json({ ...resultado, message: "Dados pessoais do usuário foram excluídos (LGPD)." });

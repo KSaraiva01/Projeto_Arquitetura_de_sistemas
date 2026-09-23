@@ -2,13 +2,16 @@
 
 import { useRef, useState } from "react";
 import { FileText, Loader2, Upload, X } from "lucide-react";
+import { UPLOAD_EXTENSIONS, UPLOAD_HINT } from "@/lib/uploads";
 
 interface UploadDropzoneProps {
   files: File[];
   onFilesChange: (files: File[]) => void;
-  onSubmit: () => void;
-  onCancel: () => void;
+  /** Sem `onSubmit`, quem usa o componente tem o próprio botão de enviar (ex.: arquivos + link). */
+  onSubmit?: () => void;
+  onCancel?: () => void;
   submitting?: boolean;
+  title?: string;
 }
 
 function formatSize(bytes: number): string {
@@ -28,6 +31,7 @@ export default function UploadDropzone({
   onSubmit,
   onCancel,
   submitting = false,
+  title = "Enviar entrega",
 }: UploadDropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -60,15 +64,17 @@ export default function UploadDropzone({
       }`}
     >
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-medium text-foreground">Enviar entrega</p>
-        <button
-          type="button"
-          onClick={onCancel}
-          aria-label="Fechar envio"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-hover-bg hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <p className="text-sm font-medium text-foreground">{title}</p>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Fechar envio"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-light transition-colors hover:bg-hover-bg hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <button
@@ -84,12 +90,13 @@ export default function UploadDropzone({
         <p className="text-sm text-muted">
           {dragOver ? "Solte para adicionar" : "Arraste arquivos aqui ou clique para selecionar"}
         </p>
-        <p className="text-xs text-muted-light">PDF, imagens ou vídeos (máx. 100MB)</p>
+        <p className="text-xs text-muted-light">{UPLOAD_HINT}</p>
       </button>
       <input
         ref={inputRef}
         type="file"
         multiple
+        accept={UPLOAD_EXTENSIONS.join(",")}
         className="hidden"
         onChange={(event) => {
           addFiles(event.target.files);
@@ -118,15 +125,17 @@ export default function UploadDropzone({
               </button>
             </div>
           ))}
-          <button
-            type="button"
-            onClick={onSubmit}
-            disabled={submitting}
-            className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-[background-color,transform] duration-150 hover:bg-primary-dark active:scale-[0.98] disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Enviando…" : `Enviar ${files.length} ${files.length === 1 ? "arquivo" : "arquivos"}`}
-          </button>
+          {onSubmit && (
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={submitting}
+              className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-[background-color,transform] duration-150 hover:bg-primary-dark active:scale-[0.98] disabled:opacity-60"
+            >
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {submitting ? "Enviando…" : `Enviar ${files.length} ${files.length === 1 ? "arquivo" : "arquivos"}`}
+            </button>
+          )}
         </div>
       )}
     </div>

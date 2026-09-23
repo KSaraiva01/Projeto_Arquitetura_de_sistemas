@@ -54,6 +54,18 @@ const schema = z.object({
   // Rotina agendada (RN-04, RF-17, RNF-06)
   JOBS_ENABLED: z.enum(["true", "false"]).default("true"),
   JOBS_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(10),
+
+  // Retenção de dados pessoais (RNF-02, docs/lgpd.md) — em dias; 0 desliga aquela limpeza
+  RETENTION_SESSIONS_DAYS: z.coerce.number().int().min(0).default(30),
+  RETENTION_TOKENS_DAYS: z.coerce.number().int().min(0).default(30),
+  RETENTION_NOTIFICATIONS_DAYS: z.coerce.number().int().min(0).default(365),
+  RETENTION_ACCESS_LOG_DAYS: z.coerce.number().int().min(0).default(180),
+
+  // Backup (RNF-07): cópia do schema + arquivos das entregas, feita pela rotina agendada
+  BACKUP_ENABLED: z.enum(["true", "false"]).default("false"),
+  BACKUP_DIR: z.string().default("backups"),
+  BACKUP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -78,6 +90,8 @@ export const env = {
   smtpSecure: raw.SMTP_SECURE === "true",
   uploadsDir: path.resolve(process.cwd(), raw.UPLOADS_DIR),
   uploadMaxBytes: raw.UPLOAD_MAX_MB * 1024 * 1024,
+  backupEnabled: raw.BACKUP_ENABLED === "true",
+  backupDir: path.resolve(process.cwd(), raw.BACKUP_DIR),
 } as const;
 
 if (env.isProduction && env.MAIL_DRIVER === "console") {

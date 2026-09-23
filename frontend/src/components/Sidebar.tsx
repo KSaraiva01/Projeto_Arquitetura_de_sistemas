@@ -5,11 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
   CalendarDays,
+  CircleUser,
   ClipboardList,
   LayoutDashboard,
   Lightbulb,
   LogOut,
   PanelLeftClose,
+  UserCog,
   Users,
   X,
 } from "lucide-react";
@@ -25,6 +27,8 @@ const adminLinks = [
   { href: "/admin/tarefas", label: "Tarefas", icon: ClipboardList },
   { href: "/admin/calendario", label: "Calendário", icon: CalendarDays },
   { href: "/admin/relatorios", label: "Relatórios", icon: BarChart3 },
+  { href: "/admin/usuarios", label: "Usuários", icon: UserCog },
+  { href: "/admin/conta", label: "Minha conta", icon: CircleUser },
 ];
 
 const mentorLinks = [
@@ -32,18 +36,21 @@ const mentorLinks = [
   { href: "/mentor/equipes", label: "Minhas Equipes", icon: Users },
   { href: "/mentor/tarefas", label: "Tarefas", icon: ClipboardList },
   { href: "/mentor/calendario", label: "Calendário", icon: CalendarDays },
+  { href: "/mentor/conta", label: "Minha conta", icon: CircleUser },
 ];
 
 const studentLinks = [
   { href: "/aluno", label: "Minha Jornada", icon: Lightbulb },
   { href: "/aluno/tarefas", label: "Minhas Tarefas", icon: ClipboardList },
   { href: "/aluno/calendario", label: "Calendário", icon: CalendarDays },
+  { href: "/aluno/conta", label: "Minha conta", icon: CircleUser },
 ];
 
 const memberLinks = [
   { href: "/integrante", label: "Minha Jornada", icon: Lightbulb },
   { href: "/integrante/tarefas", label: "Minhas Tarefas", icon: ClipboardList },
   { href: "/integrante/calendario", label: "Calendário", icon: CalendarDays },
+  { href: "/integrante/conta", label: "Minha conta", icon: CircleUser },
 ];
 
 const roleLabels = {

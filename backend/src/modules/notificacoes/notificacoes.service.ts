@@ -1,5 +1,5 @@
 import { env } from "../../config/env";
-import { Prisma, type TipoNotificacao } from "../../generated/prisma/client";
+import { Prisma, type Perfil, type TipoNotificacao } from "../../generated/prisma/client";
 import { prisma } from "../../lib/prisma";
 import type { Db } from "../../shared/auditoria";
 import { FalhaEnvioEmail, entregarEmail } from "../../shared/email/mailer";
@@ -25,6 +25,8 @@ export interface Destinatario {
   id: string | null;
   email: string;
   nome: string;
+  /** Define para qual área do sistema apontam os links do e-mail (admin ou mentor). */
+  perfil?: Perfil;
 }
 
 export interface EnfileirarInput {
@@ -39,6 +41,15 @@ export interface EnfileirarInput {
 
 /** E-mails de segurança da conta não respeitam opt-out (RF-21). */
 const SEM_OPT_OUT = new Set<TipoNotificacao>(["ATIVACAO_CONTA", "RECUPERACAO_SENHA", "CONFIRMACAO_EMAIL"]);
+
+/**
+ * O link desses e-mails leva o token em claro — o banco só guarda o hash dele
+ * (`tokens_usuario`). Depois de enviado, o registro do e-mail fica sem o
+ * token, para quem lê a tabela não conseguir usar o link.
+ */
+function semToken(html: string): string {
+  return html.replace(/token=[^"&<\s]+/g, "token=[removido]");
+}
 
 /**
  * Grava a notificação. Devolve o id, ou `null` quando ela já existia (mesma
@@ -103,7 +114,7 @@ export async function enfileirarParaTodos(
 // Destinatários
 // ---------------------------------------------------------------------------
 
-const selecaoUsuario = { id: true, email: true, nome: true } as const;
+const selecaoUsuario = { id: true, email: true, nome: true, perfil: true } as const;
 
 /** Integrantes ativos da equipe (líder incluso). */
 export async function destinatariosDaEquipe(equipeId: string, db: Db = prisma): Promise<Destinatario[]> {
@@ -205,6 +216,7 @@ export async function processarFila(limite = 50): Promise<RelatorioEnvio> {
             proximoEnvioEm: null,
             idMensagemProvedor: idMensagem,
             erro: null,
+            ...(SEM_OPT_OUT.has(notificacao.tipo) ? { corpo: semToken(notificacao.corpo) } : {}),
           },
         });
         relatorio.enviadas += 1;
@@ -219,6 +231,8 @@ export async function processarFila(limite = 50): Promise<RelatorioEnvio> {
             tentativas,
             erro: (error instanceof Error ? error.message : String(error)).slice(0, 2000),
             proximoEnvioEm: esgotou ? null : proximaTentativa(tentativas),
+            // Desistiu de reenviar: o link com o token não vai mais ser usado a partir daqui.
+            ...(esgotou && SEM_OPT_OUT.has(notificacao.tipo) ? { corpo: semToken(notificacao.corpo) } : {}),
           },
         });
         relatorio.falhas += 1;

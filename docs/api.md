@@ -20,11 +20,14 @@ A tradução está em `backend/src/shared/dto.ts`.
 - Erros sempre no envelope `{ "error": { "code", "message", "details"?, "fields"? } }`.
   `422 VALIDATION_ERROR` traz `fields: [{ field, message }]`. Outros códigos comuns: `401 INVALID_CREDENTIALS`,
   `403 PASSWORD_NOT_SET` (conta ainda não ativada), `403 EMAIL_NOT_CONFIRMED` (senha certa, mas o e-mail ainda não
-  foi confirmado — ofereça `POST /auth/resend-confirmation`), `403 TEAM_OUT_OF_SCOPE`, `404 *_NOT_FOUND`,
-  `409 STAGE_REQUIREMENTS_PENDING` (RN-01, com `details.pendingTasks`), `409 STUDENT_ALREADY_IN_TEAM` (RN-03),
-  `413 UPLOAD_LIMIT_FILE_SIZE`, `429 TOO_MANY_REQUESTS`.
+  foi confirmado — ofereça `POST /auth/resend-confirmation`), `400 LGPD_CONSENT_REQUIRED` (ativação sem o aceite da
+  política de privacidade), `403 TEAM_OUT_OF_SCOPE`, `403 ONLY_TEAM_MEMBERS` (entregar/iniciar tarefa é do aluno),
+  `400 TEAM_INACTIVE` (equipe excluída: só consulta), `404 *_NOT_FOUND`, `409 STAGE_REQUIREMENTS_PENDING` (RN-01, com
+  `details.pendingTasks`), `409 STUDENT_ALREADY_IN_TEAM` (RN-03), `409 LAST_ACTIVE_ADMIN`, `413 UPLOAD_LIMIT_FILE_SIZE`,
+  `429 TOO_MANY_REQUESTS`.
 - Escopo (RNF-03): ADMIN vê tudo; MENTOR só as equipes que acompanha; STUDENT só a própria equipe. Vale para
-  equipes, tarefas, calendário, relatórios e download de anexos.
+  equipes, tarefas, calendário, relatórios e download de anexos. Equipe excluída (Q4) sai do escopo de mentor e aluno
+  (404); o admin continua consultando, mas não altera mais nada dela (`400 TEAM_INACTIVE`).
 
 ## Endpoints
 
@@ -34,10 +37,10 @@ A tradução está em `backend/src/shared/dto.ts`.
 | GET | `/health` | `{ status, database }` — usado pelo Coolify |
 | GET | `/areas` · `/courses` | Listas para o formulário de ideia: `{ data: [{ id, name }] }` |
 | POST | `/teams/register` | RF-02/05 — formulário inicial (ver abaixo) |
-| POST | `/auth/login` | `{ email, password }` → `{ accessToken, refreshToken, expiresIn, user }` |
-| POST | `/auth/refresh` · `/auth/logout` | `{ refreshToken? }` (ou cookie) |
+| POST | `/auth/login` | `{ email, password, rememberMe? }` → `{ accessToken, refreshToken, expiresIn, user }`. Com `rememberMe: false` o cookie do refresh é de sessão (some ao fechar o navegador) e continua assim nas renovações |
+| POST | `/auth/refresh` · `/auth/logout` | `{ refreshToken? }` (ou cookie). O logout registra `LOGOUT` na auditoria |
 | POST | `/auth/forgot-password` | `{ email }` → sempre 202 (conta sem senha recebe link de ativação) |
-| POST | `/auth/reset-password` | `{ token, password }` — serve para ativação (RF-02) e recuperação (RF-01); também confirma o e-mail |
+| POST | `/auth/reset-password` | `{ token, password, lgpdConsent? }` — tela `/definir-senha?token=…` (`&tipo=ativacao` no link de ativação). Serve para ativação (RF-02) e recuperação (RF-01) e também confirma o e-mail. Quem ainda não aceitou a política de privacidade precisa mandar `lgpdConsent: true` (senão `400 LGPD_CONSENT_REQUIRED`) |
 | POST | `/auth/confirm-email` | `{ token }` do link `/confirmar-email?token=…` → `{ alreadyConfirmed, message }`. Abrir o link de novo não é erro (`alreadyConfirmed: true`); link expirado → `401 INVALID_CONFIRMATION_TOKEN` |
 | POST | `/auth/resend-confirmation` | `{ email }` → sempre 202; novo link de confirmação se a conta tiver senha e o e-mail ainda não confirmado |
 
@@ -70,18 +73,20 @@ pelo nome (tabela `cursos`).
 ### Usuários — só ADMIN (RF-03)
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| GET | `/users?role=&isActive=&search=&page=&pageSize=` | `{ data: [{ id, name, email, role, phone, course, semester, isActive, emailConfirmedAt, createdAt, mentoredTeams }], total, page, pageSize }` — `emailConfirmedAt` nulo = e-mail ainda não confirmado (não consegue entrar) |
-| POST | `/users` | `{ name, email, role: "ADMIN"\|"MENTOR", phone? }` — conta nasce sem senha; recebe ativação por e-mail |
-| GET / PATCH | `/users/:id` | PATCH: `{ name?, email?, role?, phone?, course?, semester? }`. Trocar o `email` invalida os links enviados ao endereço antigo e reenvia a ativação/confirmação pendente para o novo |
+| GET | `/users?role=&isActive=&search=&page=&pageSize=` | `{ data: [{ id, name, email, role, phone, course, semester, isActive, hasPassword, emailConfirmedAt, createdAt, mentoredTeams }], total, page, pageSize }` — `hasPassword` falso = ainda não ativou a conta; `emailConfirmedAt` nulo = e-mail ainda não confirmado (não consegue entrar) |
+| POST | `/users` | `{ name, email, role: "ADMIN"\|"MENTOR", phone? }` — conta nasce sem senha; recebe ativação por e-mail (e aceita a política de privacidade na ativação) |
+| GET / PATCH | `/users/:id` | PATCH: `{ name?, email?, role?, phone?, course?, semester? }`. Trocar o `email` invalida os links enviados ao endereço antigo e reenvia a ativação/confirmação pendente para o novo. O último admin ativo não deixa de ser admin (`409 LAST_ACTIVE_ADMIN`) |
 | PATCH | `/users/:id/status` | `{ isActive }` — desativar derruba as sessões; último admin não pode |
-| DELETE | `/users/:id` | Exclusão LGPD feita pelo admin |
+| POST | `/users/:id/resend-access` | Reenvia o link que falta: ativação (sem senha) ou confirmação do e-mail → `{ message }`; conta já ativa → `409 ACCOUNT_ALREADY_ACTIVE` |
+| POST | `/users/:id/confirm-email` | A coordenação confirma o e-mail de quem já tem senha (não recebeu o link) → `{ user, message }`; auditado |
+| DELETE | `/users/:id` | Exclusão LGPD feita pelo admin (ver `docs/lgpd.md`) |
 
 ### Equipes (`/teams`)
 | Método | Rota | Quem | Descrição |
 | --- | --- | --- | --- |
 | GET | `/teams?search=&stage=&status=&categoryId=&mentorId=&course=&period=&taskStatus=&includeInactive=` | todos (escopo) | `{ data: TeamCard[], total }` |
 | GET | `/teams/board` (mesmos filtros) | todos | RF-06 — `{ columns: [{ stage, name, teams }], total, canDrag }` |
-| GET | `/teams/:id` | todos | RF-08 — `{ team, members, journey, stageHistory }` |
+| GET | `/teams/:id` | todos | RF-08 — `{ team, members, journey, stageHistory, finalDeliverables }` (RN-02: `[{ templateId, title, taskId, status }]`, `taskId` nulo = tarefa ainda não criada) |
 | PATCH | `/teams/:id` | líder, mentor, admin | `{ name?, description?, areaId?, ideaStage? }` |
 | DELETE | `/teams/:id` | admin | Q4 — exclusão lógica |
 | GET | `/teams/:id/stage-blockers?toStage=N` ou `?toStageId=` | admin, mentor | RN-01 — `{ isAdvancing, blockers }` |
@@ -113,10 +118,10 @@ Mudar a etapa, incluir ou remover etapas de uma equipe já encaminhada ao InovAM
 | GET | `/tasks/calendar?from=AAAA-MM-DD&to=&teamId=&includeReminders=` | todos | `{ range, summary: { total, overdue, pending, approved }, days: [{ date, events }], events }` |
 | POST | `/tasks` | admin, mentor | RF-12 — `{ teamId, templateId? \| title, description?, stageId?, dueDate: "AAAA-MM-DD", isMandatory?, reminderDaysBefore?: [3,1] }` |
 | GET | `/tasks/:id` | todos | `{ task: TaskDetail }` |
-| PATCH | `/tasks/:id` | admin, mentor | `{ title?, description?, dueDate?, isMandatory? }` — mudar o prazo recalcula lembretes (RF-17) e reabre tarefa atrasada |
+| PATCH | `/tasks/:id` | admin, mentor | `{ title?, description?, dueDate?, isMandatory? }` — mudar o prazo leva os lembretes "N dias antes" para as novas datas (os já enviados voltam a valer se a nova data ainda não chegou — RF-17) e reabre tarefa atrasada |
 | PATCH | `/tasks/:id/status` | aluno | `{ status: "IN_PROGRESS" }` |
 | DELETE | `/tasks/:id` | admin, mentor | Só sem entregas |
-| POST | `/tasks/:id/submissions` | aluno da equipe (ou admin) | RF-14/16 — **multipart/form-data**: `files` (até 5 × 50 MB), `linkUrl?`, `linkTitle?`, `note?` → nova versão |
+| POST | `/tasks/:id/submissions` | aluno da equipe | RF-14/16 — **multipart/form-data**: `files` (até 5 × 50 MB), `linkUrl?` (só http/https), `linkTitle?`, `note?` → nova versão |
 | POST | `/tasks/:id/review` | admin, mentor | RF-15 — `{ decision: "APPROVED"\|"REJECTED", comment }` |
 | POST | `/tasks/:id/comments` | todos (escopo) | `{ content }` — comentário sem decisão |
 | POST / DELETE | `/tasks/:id/reminders` · `/tasks/:id/reminders/:reminderId` | admin, mentor | RF-17 — `{ daysBefore }` ou `{ remindAt: "AAAA-MM-DD" }` |
@@ -141,7 +146,7 @@ Evento do calendário: `{ kind: DUE|REMINDER, date, taskId, title, stage, stageN
 | --- | --- | --- |
 | GET | `/stages` | Catálogo das 6 etapas padrão |
 | POST | `/areas` · `/courses` (admin) | `{ name }` |
-| POST | `/jobs/run` (admin) | Executa a rotina agendada agora → `{ tarefasAtrasadas, lembretesEnfileirados, avisosAtrasoEnfileirados, emailsEnviados, emailsComFalha }` |
+| POST | `/jobs/run` (admin) | Executa a rotina agendada agora → `{ tarefasAtrasadas, lembretesEnfileirados, avisosAtrasoEnfileirados, emailsEnviados, emailsComFalha, retencao, backup }` (`retencao`/`backup` nulos quando não era a hora deles) |
 
 ## O que mudou em relação ao backend antigo (para ajustar o frontend)
 
@@ -154,7 +159,8 @@ Evento do calendário: `{ kind: DUE|REMINDER, date, taskId, title, stage, stageN
 4. `TeamCard.period` (período de ingresso) — `semester` foi mantido com o mesmo valor.
 5. Novos: `/reports/*`, `/teams/:id/refer`, `/teams/:id/members*`, `/teams/:id/reminders` (RF-20),
    `/tasks/:id/reminders`, `/tasks/:id/comments`, `/tasks/:id/status`, `/auth/me/notification-preferences`, `/courses`, `/stages`.
-6. Links dos e-mails: `/definir-senha?token=…` (ativação e recuperação usam a mesma tela e o mesmo endpoint) e
-   `/confirmar-email?token=…` (validação do e-mail do líder — a página já existe e chama `POST /auth/confirm-email`).
+6. Links dos e-mails: `/definir-senha?token=…` (ativação — com `&tipo=ativacao`, a tela já mostra o aceite da política
+   de privacidade — e recuperação usam a mesma tela e o mesmo endpoint) e `/confirmar-email?token=…` (validação do
+   e-mail do líder). As duas páginas existem no frontend.
 7. **Validação do e-mail:** o login responde `403 EMAIL_NOT_CONFIRMED` enquanto o líder não confirmar o e-mail do
    cadastro; a tela de login oferece `POST /auth/resend-confirmation`.

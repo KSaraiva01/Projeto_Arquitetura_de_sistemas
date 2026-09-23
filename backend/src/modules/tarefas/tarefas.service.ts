@@ -33,7 +33,10 @@ import type {
 // Consultas (RF-13)
 // ---------------------------------------------------------------------------
 
-/** Carrega a tarefa garantindo o escopo. Fora do escopo = 403; inexistente = 404. */
+/**
+ * Carrega a tarefa garantindo o escopo. Fora do escopo = 403; inexistente
+ * ou de equipe excluída (para quem não é admin) = 404.
+ */
 async function carregarTarefaNoEscopo(usuario: UsuarioAutenticado, tarefaId: string): Promise<TarefaRow> {
   const tarefa = await prisma.tarefa.findFirst({
     where: { AND: [{ id: tarefaId }, escopoTarefa(usuario)] },
@@ -41,7 +44,8 @@ async function carregarTarefaNoEscopo(usuario: UsuarioAutenticado, tarefaId: str
   });
   if (tarefa) return tarefa;
 
-  if (await prisma.tarefa.count({ where: { id: tarefaId } })) {
+  const existe = await prisma.tarefa.findUnique({ where: { id: tarefaId }, select: { equipe: { select: { excluidaEm: true } } } });
+  if (existe && !existe.equipe.excluidaEm) {
     throw new ForbiddenError("Você não tem acesso a esta tarefa.", "TASK_OUT_OF_SCOPE");
   }
   throw new NotFoundError("Tarefa não encontrada.", "TASK_NOT_FOUND");
@@ -50,6 +54,20 @@ async function carregarTarefaNoEscopo(usuario: UsuarioAutenticado, tarefaId: str
 function exigirMentor(usuario: UsuarioAutenticado) {
   if (!podeMentorar(usuario)) {
     throw new ForbiddenError("Apenas administradores e mentores podem fazer isso.", "INSUFFICIENT_ROLE");
+  }
+}
+
+/** Q4 — tarefa de equipe excluída fica só para consulta (o admin ainda a enxerga). */
+function exigirEquipeAtiva(tarefa: TarefaRow) {
+  if (tarefa.equipe.excluidaEm) {
+    throw new BadRequestError("A equipe desta tarefa foi excluída; a tarefa fica só para consulta.", "TEAM_INACTIVE");
+  }
+}
+
+/** Entregar e marcar "em andamento" são coisas dos integrantes da equipe, não da coordenação. */
+function exigirAluno(usuario: UsuarioAutenticado) {
+  if (usuario.perfil !== "ALUNO") {
+    throw new ForbiddenError("Só os integrantes da equipe fazem isso.", "ONLY_TEAM_MEMBERS");
   }
 }
 
@@ -274,13 +292,16 @@ export async function criarTarefa(usuario: UsuarioAutenticado, input: CreateTask
 }
 
 /**
- * RF-12/RF-17 — edita a tarefa. Mudou o prazo? Os lembretes relativos ainda
- * não enviados são recalculados (os de data fixa ficam), e uma tarefa
- * "atrasada" cujo novo prazo é futuro volta a ficar pendente.
+ * RF-12/RF-17 — edita a tarefa. Mudou o prazo (nota da RF-17: "verificar
+ * lembretes caso o mentor atualize os prazos")? Os lembretes "X dias antes"
+ * acompanham o novo prazo: os que ainda estão por vir voltam a valer, mesmo
+ * que já tenham saído para o prazo antigo; os de data fixa ficam como estão.
+ * Uma tarefa "atrasada" cujo novo prazo é futuro volta a ficar pendente.
  */
 export async function atualizarTarefa(usuario: UsuarioAutenticado, tarefaId: string, input: UpdateTaskInput, ip: string | null) {
   exigirMentor(usuario);
   const tarefa = await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(tarefa);
 
   const novoPrazo = input.dueDate ? fimDoDia(input.dueDate) : null;
   const prazoMudou = novoPrazo !== null && novoPrazo.getTime() !== tarefa.prazo.getTime();
@@ -300,17 +321,32 @@ export async function atualizarTarefa(usuario: UsuarioAutenticado, tarefaId: str
       },
     });
 
+    let lembretesReativados = 0;
     if (prazoMudou) {
-      const relativos = await tx.lembreteTarefa.findMany({ where: { tarefaId, enviadoEm: null, diasAntes: { not: null } } });
+      const agora = Date.now();
+      const relativos = await tx.lembreteTarefa.findMany({ where: { tarefaId, diasAntes: { not: null } } });
       for (const lembrete of relativos) {
-        await tx.lembreteTarefa.update({ where: { id: lembrete.id }, data: { lembrarEm: dataDoLembrete(novoPrazo!, lembrete.diasAntes!) } });
+        const lembrarEm = dataDoLembrete(novoPrazo!, lembrete.diasAntes!);
+        const reativar = lembrete.enviadoEm !== null && lembrarEm.getTime() > agora;
+        if (reativar) lembretesReativados += 1;
+        await tx.lembreteTarefa.update({
+          where: { id: lembrete.id },
+          data: { lembrarEm, ...(reativar ? { enviadoEm: null } : {}) },
+        });
       }
     }
 
     if (input.isMandatory !== undefined) await recalcularStatusJornada(tarefa.equipeId, tx);
 
     await registrarAuditoria(
-      { usuarioId: usuario.id, acao: "TAREFA_ATUALIZADA", entidade: "tarefa", entidadeId: tarefaId, detalhes: { campos: Object.keys(input), prazoAnterior: tarefa.prazo, prazoMudou }, ip },
+      {
+        usuarioId: usuario.id,
+        acao: "TAREFA_ATUALIZADA",
+        entidade: "tarefa",
+        entidadeId: tarefaId,
+        detalhes: { campos: Object.keys(input), prazoAnterior: tarefa.prazo, prazoMudou, lembretesReativados },
+        ip,
+      },
       tx,
     );
   });
@@ -320,7 +356,9 @@ export async function atualizarTarefa(usuario: UsuarioAutenticado, tarefaId: str
 
 /** O aluno marca que começou (PENDING → IN_PROGRESS). */
 export async function iniciarTarefa(usuario: UsuarioAutenticado, tarefaId: string) {
+  exigirAluno(usuario);
   const tarefa = await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(tarefa);
   if (tarefa.status !== "PENDENTE") {
     throw new ConflictError("Só uma tarefa pendente pode ser marcada como em andamento.", "TASK_NOT_PENDING");
   }
@@ -332,6 +370,7 @@ export async function iniciarTarefa(usuario: UsuarioAutenticado, tarefaId: strin
 export async function excluirTarefa(usuario: UsuarioAutenticado, tarefaId: string, ip: string | null) {
   exigirMentor(usuario);
   const tarefa = await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(tarefa);
   if (tarefa._count.entregas > 0) {
     throw new ConflictError("Esta tarefa já recebeu entregas e não pode ser excluída.", "TASK_HAS_SUBMISSIONS");
   }
@@ -362,11 +401,10 @@ export async function entregar(
   ip: string | null,
 ) {
   try {
+    exigirAluno(usuario);
     const tarefa = await carregarTarefaNoEscopo(usuario, tarefaId);
+    exigirEquipeAtiva(tarefa);
 
-    if (usuario.perfil === "MENTOR") {
-      throw new ForbiddenError("A entrega é feita pelos integrantes da equipe.", "MENTOR_CANNOT_SUBMIT");
-    }
     if (tarefa.status === "APROVADA") {
       throw new ConflictError("Esta tarefa já foi aprovada e não aceita novas entregas.", "TASK_ALREADY_APPROVED");
     }
@@ -407,7 +445,7 @@ export async function entregar(
         await destinatariosAcompanhamento(tarefa.equipeId, tx),
         (pessoa) => ({
           tipo: "ENTREGA_RECEBIDA",
-          modelo: emailEntregaRecebida(pessoa.nome, tarefa.equipe.nome, tarefa.titulo, versao, usuario.nome, tarefa.equipeId),
+          modelo: emailEntregaRecebida(pessoa.nome, tarefa.equipe.nome, tarefa.titulo, versao, usuario.nome, tarefa.equipeId, pessoa.perfil),
           chave: `ENTREGA_RECEBIDA:entrega:${entrega.id}:usuario:${pessoa.id}`,
           equipeId: tarefa.equipeId,
           tarefaId,
@@ -438,6 +476,7 @@ export async function entregar(
 export async function avaliar(usuario: UsuarioAutenticado, tarefaId: string, input: ReviewTaskInput, ip: string | null) {
   exigirMentor(usuario);
   const tarefa = await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(tarefa);
 
   const ultima = await prisma.entrega.findFirst({ where: { tarefaId }, orderBy: { versao: "desc" } });
   if (!ultima) throw new ConflictError("Esta tarefa ainda não tem nenhuma entrega para avaliar.", "NO_SUBMISSION");
@@ -475,7 +514,7 @@ export async function avaliar(usuario: UsuarioAutenticado, tarefaId: string, inp
 
 /** Comentário livre (sem decisão) de qualquer pessoa no escopo da tarefa. */
 export async function comentar(usuario: UsuarioAutenticado, tarefaId: string, input: CommentInput) {
-  await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(await carregarTarefaNoEscopo(usuario, tarefaId));
   await prisma.comentarioTarefa.create({ data: { tarefaId, autorId: usuario.id, conteudo: input.content } });
   return obterTarefa(usuario, tarefaId);
 }
@@ -487,6 +526,7 @@ export async function comentar(usuario: UsuarioAutenticado, tarefaId: string, in
 export async function adicionarLembrete(usuario: UsuarioAutenticado, tarefaId: string, input: ReminderInput) {
   exigirMentor(usuario);
   const tarefa = await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(tarefa);
 
   const lembrarEm = input.daysBefore !== undefined ? dataDoLembrete(tarefa.prazo, input.daysBefore) : (() => {
     const d = inicioDoDia(input.remindAt!);
@@ -503,7 +543,7 @@ export async function adicionarLembrete(usuario: UsuarioAutenticado, tarefaId: s
 
 export async function removerLembrete(usuario: UsuarioAutenticado, tarefaId: string, lembreteId: string) {
   exigirMentor(usuario);
-  await carregarTarefaNoEscopo(usuario, tarefaId);
+  exigirEquipeAtiva(await carregarTarefaNoEscopo(usuario, tarefaId));
   const removidos = await prisma.lembreteTarefa.deleteMany({ where: { id: lembreteId, tarefaId, enviadoEm: null } });
   if (removidos.count === 0) throw new NotFoundError("Lembrete não encontrado (ou já enviado).", "REMINDER_NOT_FOUND");
 }

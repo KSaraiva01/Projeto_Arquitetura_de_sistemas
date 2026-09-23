@@ -79,11 +79,14 @@ export const updateTaskStatusSchema = z.object({
  * serviço, que enxerga os arquivos recebidos pelo multer.
  */
 export const submissionSchema = z.object({
+  // O `.url()` do Zod aceita qualquer esquema (javascript:, data:…); o link vai
+  // parar num <a href> na tela do mentor, então só http(s) passa.
   linkUrl: z
     .string()
     .trim()
     .url("Informe um link começando com http:// ou https://.")
     .max(1000)
+    .refine((url) => /^https?:\/\//i.test(url), "Informe um link começando com http:// ou https://.")
     .optional()
     .or(z.literal("").transform(() => undefined)),
   linkTitle: z.string().trim().max(255).optional(),

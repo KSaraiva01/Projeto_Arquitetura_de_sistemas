@@ -1,4 +1,8 @@
-export type UserRole = "admin" | "aluno" | "mentor" | "integrante";
+/**
+ * Constantes de tela que não vêm da API: nomes curtos das 6 etapas padrão,
+ * entregável esperado de cada uma e as listas fixas do formulário de cadastro.
+ * Os dados em si vêm todos da API (tipos em `api-types.ts`).
+ */
 
 export type JourneyStage = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -11,15 +15,6 @@ export const STAGE_NAMES: Record<JourneyStage, string> = {
   6: "Pitch e inscrição",
 };
 
-export const STAGE_DESCRIPTIONS: Record<JourneyStage, string> = {
-  1: "Aluno preenche o formulário inicial contando a ideia.",
-  2: "Equipe InfoHub analisa a proposta e agenda o 1º encontro.",
-  3: "Mentor e aluno definem problema, público-alvo e solução inicial.",
-  4: "Construção do Value Proposition Design.",
-  5: "Construção do Business Model Canvas.",
-  6: "Revisão geral, gravação do Pitch Vídeo e conferência de documentos.",
-};
-
 export const STAGE_DELIVERABLES: Record<JourneyStage, string> = {
   1: "Cadastro da ideia (formulário)",
   2: "Agendamento confirmado",
@@ -29,6 +24,7 @@ export const STAGE_DELIVERABLES: Record<JourneyStage, string> = {
   6: "Pitch Vídeo, Canvas final, VPD final, dados de todos os integrantes",
 };
 
+/** Status de tarefa no vocabulário visual (cores do StatusBadge). */
 export type TaskStatus =
   | "pendente"
   | "em_andamento"
@@ -36,99 +32,6 @@ export type TaskStatus =
   | "atrasada"
   | "aprovada"
   | "reprovada";
-
-export type IdeaStage =
-  | "apenas_ideia"
-  | "prototipo"
-  | "mvp_desenvolvimento"
-  | "mvp_pronto";
-
-export const IDEA_STAGE_LABELS: Record<IdeaStage, string> = {
-  apenas_ideia: "Apenas ideia",
-  prototipo: "Protótipo",
-  mvp_desenvolvimento: "MVP em desenvolvimento",
-  mvp_pronto: "MVP pronto",
-};
-
-export interface TeamMember {
-  id: string;
-  name: string;
-  email: string;
-  course: string;
-}
-
-export interface StageHistoryEntry {
-  stage: JourneyStage;
-  completedAt: string;
-}
-
-export interface Team {
-  id: string;
-  ideaName: string;
-  description: string;
-  area: string;
-  ideaStage: IdeaStage;
-  currentStage: JourneyStage;
-  status: "ativa" | "pronta_inovamf" | "encaminhada" | "inativa";
-  leader: {
-    id: string;
-    name: string;
-    email: string;
-    phone: string;
-    course: string;
-    semester: string;
-  };
-  members: TeamMember[];
-  createdAt: string;
-  howDidYouHear?: string;
-  stageHistory: StageHistoryEntry[];
-}
-
-export interface Task {
-  id: string;
-  teamId: string;
-  title: string;
-  description: string;
-  stage: JourneyStage;
-  dueDate: string;
-  status: TaskStatus;
-  files: FileUpload[];
-  adminComment?: string;
-  createdAt: string;
-  templateId?: string;
-}
-
-export interface TaskTemplate {
-  id: string;
-  title: string;
-  description: string;
-  stage: JourneyStage;
-  mandatory: boolean;
-}
-
-export interface FileUpload {
-  id: string;
-  name: string;
-  size: string;
-  uploadedAt: string;
-  version: number;
-}
-
-export interface MentorNote {
-  id: string;
-  teamId: string;
-  authorName: string;
-  content: string;
-  createdAt: string;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  teamId?: string;
-}
 
 export const SEMESTERS = [
   "1º semestre",

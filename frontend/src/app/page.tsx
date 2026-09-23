@@ -45,6 +45,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
@@ -72,7 +73,7 @@ export default function LoginPage() {
     try {
       // O destino vem da role devolvida pela API, não de um seletor na tela:
       // quem decide o que a pessoa é são os dados, não o formulário.
-      const session = await api.login(email, password);
+      const session = await api.login(email, password, rememberMe);
       await refresh();
       router.replace(homePathFor(session.user));
     } catch (err) {
@@ -335,8 +336,14 @@ export default function LoginPage() {
               )}
 
               <div className="flex items-center justify-between">
+                {/* Sem "Lembrar-me" a sessão acaba quando o navegador fecha (computador compartilhado). */}
                 <label className="flex items-center gap-2 text-sm text-muted">
-                  <input type="checkbox" className="rounded border-input-border" />
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(event) => setRememberMe(event.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                  />
                   Lembrar-me
                 </label>
                 <button
@@ -379,7 +386,10 @@ export default function LoginPage() {
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <InfoHubLogo size="sm" showTagline />
           <p className="text-xs text-muted-light">
-            &copy; {new Date().getFullYear()} Faculdade Antonio Meneghetti. Todos os direitos reservados.
+            &copy; {new Date().getFullYear()} Faculdade Antonio Meneghetti. Todos os direitos reservados. ·{" "}
+            <Link href="/privacidade" className="hover:text-foreground underline-offset-2 hover:underline">
+              Política de privacidade
+            </Link>
           </p>
         </div>
       </footer>

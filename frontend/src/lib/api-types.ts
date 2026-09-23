@@ -128,12 +128,22 @@ export interface ApiStageHistoryEntry {
   changedByName: string | null;
 }
 
+/** RN-02 — um dos entregáveis finais obrigatórios e a tarefa da equipe feita dele. */
+export interface ApiFinalDeliverable {
+  templateId: string;
+  title: string;
+  /** Nulo = a tarefa ainda não foi criada para a equipe. */
+  taskId: string | null;
+  status: ApiTaskStatus | null;
+}
+
 /** RF-08 — `GET /teams/:id`. */
 export interface ApiTeamDetail {
   team: ApiTeamCard;
   members: ApiTeamMember[];
   journey: ApiJourneyStage[];
   stageHistory: ApiStageHistoryEntry[];
+  finalDeliverables: ApiFinalDeliverable[];
 }
 
 export interface ApiNote {
@@ -193,9 +203,18 @@ export interface ApiTaskComment {
   createdAt: string;
 }
 
+/** RF-17 — lembrete de uma tarefa: relativo ao prazo (`daysBefore`) ou em data fixa. */
+export interface ApiTaskReminder {
+  id: string;
+  daysBefore: number | null;
+  remindAt: string;
+  sentAt: string | null;
+}
+
 export interface ApiTaskDetail extends ApiTask {
   submissions: ApiSubmission[];
   comments: ApiTaskComment[];
+  reminders: ApiTaskReminder[];
 }
 
 export interface ApiTaskTemplate {
@@ -269,6 +288,54 @@ export interface ApiCalendar {
   events: ApiCalendarEvent[];
 }
 
+/** RF-03 — linha de `GET /users`. */
+export interface ApiUserSummary {
+  id: string;
+  name: string;
+  email: string;
+  role: ApiUserRole;
+  phone: string | null;
+  course: string | null;
+  semester: string | null;
+  isActive: boolean;
+  /** Falso = ainda não criou a senha pelo link de ativação. */
+  hasPassword: boolean;
+  /** Nulo = e-mail não confirmado (não consegue entrar). */
+  emailConfirmedAt: string | null;
+  createdAt: string;
+  mentoredTeams: number;
+}
+
+/** RF-22 — `GET /reports/dashboard`. */
+export interface ApiReportDashboard {
+  filters: { period?: string; status?: ApiJourneyStatus; includeInactive: boolean };
+  periods: string[];
+  totals: {
+    teams: number;
+    activeTeams: number;
+    readyForInovamf: number;
+    referred: number;
+    openTasks: number;
+    overdueTasks: number;
+    teamsWithOverdueTasks: number;
+    newTeamsLast30Days: number;
+  };
+  byStage: Array<{ stage: number; name: string; teams: number }>;
+  byArea: Array<{ name: string; teams: number }>;
+  byStatus: Array<{ status: ApiJourneyStatus; teams: number }>;
+}
+
+/** Tipos de aviso por e-mail que a pessoa pode desligar (RF-21). */
+export type ApiNotificationType =
+  | "NOVA_TAREFA"
+  | "PRAZO_PROXIMO"
+  | "PRAZO_VENCIDO"
+  | "TAREFA_ATRASADA"
+  | "ENTREGA_RECEBIDA"
+  | "ENTREGA_AVALIADA"
+  | "LEMBRETE_MANUAL"
+  | "NOVO_CADASTRO";
+
 export const TASK_STATUS_LABELS: Record<ApiTaskStatus, string> = {
   PENDING: "Pendente",
   IN_PROGRESS: "Em andamento",
@@ -300,6 +367,12 @@ export function journeyStageLabel(stage: Pick<ApiJourneyStage, "number">): strin
   return stage.number === null ? "Etapa extra" : `Etapa ${stage.number}`;
 }
 
+export const ROLE_LABELS: Record<ApiUserRole, string> = {
+  ADMIN: "Administrador",
+  MENTOR: "Mentor",
+  STUDENT: "Aluno",
+};
+
 /** Rota inicial de cada perfil depois do login. */
 export function homePathFor(user: ApiSessionUser): string {
   if (user.role === "ADMIN") return "/admin";
@@ -308,4 +381,12 @@ export function homePathFor(user: ApiSessionUser): string {
   // Líder e integrante são ambos STUDENT; o que separa é o papel na equipe.
   const isLeader = user.teams.some((team) => team.memberRole === "LEADER");
   return isLeader ? "/aluno" : "/integrante";
+}
+
+/**
+ * A equipe que o aluno acompanha: a ativa (RN-03 garante que só há uma), ou
+ * a mais recente já encaminhada ao InovAMF.
+ */
+export function currentTeamOf(user: ApiSessionUser): ApiSessionUser["teams"][number] | null {
+  return user.teams.find((team) => team.journeyStatus !== "REFERRED") ?? user.teams[user.teams.length - 1] ?? null;
 }

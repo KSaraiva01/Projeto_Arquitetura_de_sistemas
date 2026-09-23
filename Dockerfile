@@ -30,11 +30,15 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOST=0.0.0.0
 ENV UPLOADS_DIR=/app/uploads
+# RNF-07: a rotina agendada gera o backup do schema + uploads uma vez por dia.
+# Monte um volume persistente em /app/backups (senão o backup some a cada deploy).
+ENV BACKUP_ENABLED=true
+ENV BACKUP_DIR=/app/backups
 # Prazos e lembretes são calculados no fuso do servidor (fim do dia, 9h da manhã)
 ENV TZ=America/Sao_Paulo
 
 COPY --from=build --chown=node:node /app ./
-RUN mkdir -p /app/uploads && chown node:node /app/uploads
+RUN mkdir -p /app/uploads /app/backups && chown node:node /app/uploads /app/backups
 
 USER node
 EXPOSE 3000

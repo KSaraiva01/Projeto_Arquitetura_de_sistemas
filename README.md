@@ -26,7 +26,7 @@ com PostgreSQL via Prisma (migrations versionadas). Deploy no Coolify (servidor 
 │   └── generated/prisma  Prisma Client gerado (ignorado no git)
 ├── frontend/             Next.js 16 (App Router) — reaproveitado do projeto anterior
 ├── prisma/               schema.prisma · migrations/ · seed.ts
-├── docs/                 banco-de-dados.md · api.md
+├── docs/                 banco-de-dados.md · api.md · lgpd.md
 ├── Dockerfile            imagem única para o Coolify
 └── package.json          um só, para back e front
 ```
@@ -48,8 +48,9 @@ npm run dev               # http://localhost:3000 — API em /api, frontend com 
 
 Outros scripts: `npm run build` (Prisma + tsc + Next), `npm start` (`db:preparar` + servidor de produção — é o que o
 container roda), `npm run typecheck`, `npm run jobs:run` (executa a rotina agendada uma vez), `npm run db:studio`,
-`npm run db:migrate` (nova migration em dev), `npm run db:reset` (zera o schema, com confirmação) e
-`npm run db:recriar` (zera + migrations + seed, sem confirmação — ambos protegidos pelo `scripts/checar-schema.cjs`).
+`npm run db:migrate` (nova migration em dev), `npm run db:reset` (zera o schema, com confirmação),
+`npm run db:recriar` (zera + migrations + seed, sem confirmação — ambos protegidos pelo `scripts/checar-schema.cjs`),
+`npm run backup` e `npm run backup:restaurar` (ver [Backup](#backup-e-restauração-rnf-07)).
 
 **Atenção:** o PostgreSQL da faculdade é compartilhado entre as duplas, cada uma no seu schema. Este projeto usa
 `infohub_losekann`; nunca aponte a `DATABASE_URL` para o schema `public`. Detalhes em [docs/banco-de-dados.md](docs/banco-de-dados.md).
@@ -71,7 +72,30 @@ verificado viram `FALHOU` na hora, com o motivo em `erro`.
 **Validação do e-mail.** O líder cria a senha no cadastro, mas só entra depois de abrir o link de confirmação
 (`/confirmar-email?token=…`, válido por `ACTIVATION_EXPIRES_IN_HOURS`); até lá o login responde `EMAIL_NOT_CONFIRMED`
 e a tela oferece reenviar o link. Integrantes, mentores e admins confirmam o e-mail ao criar a senha pelo link de
-ativação. Contas que já existiam antes dessa regra (e as do seed) contam como confirmadas.
+ativação (`/definir-senha?token=…`), onde também aceitam a política de privacidade. Contas que já existiam antes dessa
+regra (e as do seed) contam como confirmadas.
+
+**Sem e-mail configurado** (`MAIL_DRIVER=console`, o link só aparece no log do container): em *Usuários* a coordenação
+reenvia o link de acesso ou confirma o e-mail de quem já criou a senha — dá para demonstrar o cadastro de uma ideia
+ao vivo sem depender do e-mail. Os links de ativação e recuperação continuam só no log.
+
+## Backup e restauração (RNF-07)
+
+Com `BACKUP_ENABLED=true` (padrão no Dockerfile), a rotina agendada grava a cada `BACKUP_INTERVAL_HOURS` (24 h) um
+backup lógico do schema — todas as tabelas, lidas numa única transação — em `BACKUP_DIR/infohub-<schema>-<data>.json.gz`,
+espelha os arquivos das entregas em `BACKUP_DIR/uploads` e guarda os `BACKUP_KEEP` (14) mais recentes. Não depende de
+`pg_dump` nem de acesso ao servidor do banco da faculdade.
+
+```bash
+npm run backup                                    # gera um backup agora
+npm run backup:restaurar                          # lista os backups disponíveis
+npm run backup:restaurar -- ultimo                # mostra o que seria restaurado (não altera nada)
+npm run backup:restaurar -- ultimo --confirmar    # substitui o conteúdo do schema pelo do backup
+```
+
+A restauração roda em uma transação (ou volta tudo, ou nada muda), exige que o banco esteja com as mesmas migrations do
+backup e recupera os arquivos de entrega que faltarem. No Coolify, rode pelo *Terminal* do container. Os backups
+contêm dados pessoais: o volume `/app/backups` não pode ser público (ver [docs/lgpd.md](docs/lgpd.md)).
 
 ## G1 — o que é avaliado e como o projeto atende
 
@@ -108,8 +132,8 @@ Um único resource (Application), apontando para este repositório na branch `in
 | Install / Build / Start command               | Vazios — vêm do Dockerfile (`CMD npm start`). **Não** use `npm run dev` em produção. |
 | Pre-deployment / Post-deployment              | Vazios. Migrations e seed já rodam dentro do `npm start`; não repita aqui. (Um `npx prisma db:seed` nesse campo falha com `Unknown command "db:seed"`: `db:seed` é o nome do script npm, e o comando do Prisma é `prisma db seed`.) |
 | Networking → **Ports exposes**                | `3000` (porta interna do container, a mesma do Dockerfile). Se o acesso for por IP:porta em vez de domínio, acrescente um *Port mapping* `<porta externa>:3000`, ex.: `3008:3000`. |
-| Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` (`resend` + `RESEND_API_KEY` + `MAIL_FROM` — ver [E-mails](#e-mails-resend); `console` só imprime no log). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR` e `TZ` já vêm do Dockerfile. |
-| Storages                                      | **Volume Mount** com destino `/app/uploads` (arquivos das entregas — inclusive os PDFs do cenário). |
+| Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` (`resend` + `RESEND_API_KEY` + `MAIL_FROM` — ver [E-mails](#e-mails-resend); `console` só imprime no log e **ninguém recebe e-mail**). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR`, `BACKUP_ENABLED`, `BACKUP_DIR` e `TZ` já vêm do Dockerfile; `RETENTION_*` e `BACKUP_*` têm padrões (ver `.env.example`). |
+| Storages                                      | **Volume Mount** com destino `/app/uploads` (arquivos das entregas — inclusive os PDFs do cenário) e outro com destino `/app/backups` (backups diários — sem ele, somem a cada deploy). |
 | Healthchecks (opcional)                       | `GET /api/health` na porta `3000`. A imagem já traz um `HEALTHCHECK` equivalente. |
 
 O container roda `npm start`: cria o schema (se preciso), aplica as migrations pendentes, roda o seed e sobe o servidor.
@@ -126,3 +150,5 @@ npm run db:recriar      # zera o schema da dupla, reaplica as migrations e roda 
 
 - [docs/banco-de-dados.md](docs/banco-de-dados.md) — tabelas, regras de negócio (onde cada uma é garantida), fluxos e seeds.
 - [docs/api.md](docs/api.md) — todos os endpoints, formatos de resposta e o que mudou em relação ao frontend antigo.
+- [docs/lgpd.md](docs/lgpd.md) — dados tratados, consentimento, retenção e exclusão (RNF-02); a versão para o usuário
+  está na página `/privacidade`.

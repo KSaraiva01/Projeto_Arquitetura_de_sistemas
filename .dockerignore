@@ -4,6 +4,7 @@ frontend/.next
 frontend/out
 backend/src/generated
 uploads
+backups
 .env
 .env.*
 !.env.example

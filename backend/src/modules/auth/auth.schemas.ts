@@ -22,6 +22,8 @@ export const emailSchema = z
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, "Informe sua senha."),
+  /** "Lembrar-me": sem ele, o cookie da sessão some quando o navegador fecha. */
+  rememberMe: z.boolean().optional(),
 });
 
 export const refreshSchema = z.object({
@@ -32,10 +34,15 @@ export const forgotPasswordSchema = z.object({
   email: emailSchema,
 });
 
-/** Serve para ativação de conta (RF-02) e recuperação (RF-01): mesmo fluxo. */
+/**
+ * Serve para ativação de conta (RF-02) e recuperação (RF-01): mesmo fluxo.
+ * `lgpdConsent` é exigido de quem ainda não aceitou a política de
+ * privacidade — o colega cadastrado pelo líder, na ativação (RNF-02).
+ */
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, "Token ausente."),
   password: senhaSchema,
+  lgpdConsent: z.boolean().optional(),
 });
 
 /** Validação do e-mail: o token vem do link `/confirmar-email?token=…`. */

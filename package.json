@@ -26,7 +26,9 @@
     "db:reset": "node scripts/checar-schema.cjs && prisma migrate reset",
     "db:recriar": "node scripts/checar-schema.cjs && prisma migrate reset --force && npm run db:seed",
     "db:push": "node scripts/checar-schema.cjs && prisma db push",
-    "jobs:run": "tsx backend/src/jobs/executar.ts"
+    "jobs:run": "tsx backend/src/jobs/executar.ts",
+    "backup": "tsx backend/src/jobs/backup-cli.ts",
+    "backup:restaurar": "tsx backend/src/jobs/restaurar.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

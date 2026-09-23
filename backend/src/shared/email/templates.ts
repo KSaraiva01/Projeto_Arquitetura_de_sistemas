@@ -1,4 +1,5 @@
 import { env } from "../../config/env";
+import type { Perfil } from "../../generated/prisma/client";
 import { dataBr } from "../datas";
 
 /**
@@ -56,13 +57,21 @@ function primeiroNome(nome: string): string {
 
 const LINK_LOGIN = `${env.APP_URL}/`;
 
+/** Detalhe da equipe na área de quem recebe: o mentor tem a dele, a coordenação a do admin. */
+function urlEquipe(perfil: Perfil | undefined, equipeId: string): string {
+  return `${env.APP_URL}/${perfil === "MENTOR" ? "mentor" : "admin"}/equipes/${equipeId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Contas (RF-01, RF-02, RF-03)
 // ---------------------------------------------------------------------------
 
-/** RF-02/RF-03 — primeiro acesso: define a senha pelo token. */
+/**
+ * RF-02/RF-03 — primeiro acesso: define a senha pelo token. O `tipo=ativacao`
+ * faz a tela já mostrar o aceite da política de privacidade (RNF-02).
+ */
 export function emailAtivacaoConta(nome: string, token: string, contexto: string): ModeloEmail {
-  const url = `${env.APP_URL}/definir-senha?token=${encodeURIComponent(token)}`;
+  const url = `${env.APP_URL}/definir-senha?token=${encodeURIComponent(token)}&tipo=ativacao`;
   return {
     assunto: "Ative sua conta no InfoHub",
     html: layout(
@@ -117,33 +126,48 @@ export function emailNovoCadastro(nome: string, equipe: string, lider: string, a
       "Nova ideia no InfoHub",
       p(`Olá, ${escapar(primeiroNome(nome))}!`) +
         p(`<strong>${escapar(lider)}</strong> cadastrou a ideia <strong>${escapar(equipe)}</strong> (área: ${escapar(area)}). A equipe já está na etapa 1 do funil, aguardando o primeiro contato.`) +
-        botao("Ver a equipe", `${env.APP_URL}/admin/equipes/${equipeId}`),
+        botao("Ver a equipe", urlEquipe("ADMIN", equipeId)),
     ),
   };
 }
 
-/** RF-19 — arquivo entregue. */
-export function emailEntregaRecebida(nome: string, equipe: string, tarefa: string, versao: number, quem: string, equipeId: string): ModeloEmail {
+/** RF-19 — arquivo entregue (para os mentores da equipe e a coordenação). */
+export function emailEntregaRecebida(
+  nome: string,
+  equipe: string,
+  tarefa: string,
+  versao: number,
+  quem: string,
+  equipeId: string,
+  perfil?: Perfil,
+): ModeloEmail {
   return {
     assunto: `Entrega recebida: ${tarefa} (${equipe})`,
     html: layout(
       "Nova entrega para avaliar",
       p(`Olá, ${escapar(primeiroNome(nome))}!`) +
         p(`<strong>${escapar(quem)}</strong> enviou a versão <strong>${versao}</strong> da tarefa <strong>${escapar(tarefa)}</strong> da equipe <strong>${escapar(equipe)}</strong>.`) +
-        botao("Avaliar entrega", `${env.APP_URL}/admin/equipes/${equipeId}`),
+        botao("Avaliar entrega", urlEquipe(perfil, equipeId)),
     ),
   };
 }
 
-/** RF-19 — tarefa ficou atrasada (aviso ao mentor/admin). */
-export function emailTarefaAtrasada(nome: string, equipe: string, tarefa: string, prazo: Date, equipeId: string): ModeloEmail {
+/** RF-19 — tarefa ficou atrasada (aviso aos mentores da equipe e à coordenação). */
+export function emailTarefaAtrasada(
+  nome: string,
+  equipe: string,
+  tarefa: string,
+  prazo: Date,
+  equipeId: string,
+  perfil?: Perfil,
+): ModeloEmail {
   return {
     assunto: `Tarefa atrasada: ${tarefa} (${equipe})`,
     html: layout(
       "Tarefa atrasada",
       p(`Olá, ${escapar(primeiroNome(nome))}!`) +
         p(`A tarefa <strong>${escapar(tarefa)}</strong> da equipe <strong>${escapar(equipe)}</strong> venceu em <strong>${dataBr(prazo)}</strong> sem entrega.`) +
-        botao("Ver a equipe", `${env.APP_URL}/admin/equipes/${equipeId}`),
+        botao("Ver a equipe", urlEquipe(perfil, equipeId)),
     ),
   };
 }

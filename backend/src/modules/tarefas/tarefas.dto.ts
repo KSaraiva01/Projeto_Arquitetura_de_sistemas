@@ -4,7 +4,9 @@ import { numeroColuna, selecaoEtapa } from "../equipes/jornada";
 
 /** `include` da tarefa em listagens: equipe (com a jornada, para a coluna), etapa, contadores. */
 export const incluirTarefa = {
-  equipe: { select: { id: true, nome: true, liderId: true, etapas: { select: selecaoEtapa, orderBy: { ordem: "asc" } } } },
+  equipe: {
+    select: { id: true, nome: true, liderId: true, excluidaEm: true, etapas: { select: selecaoEtapa, orderBy: { ordem: "asc" } } },
+  },
   etapaEquipe: { select: selecaoEtapa },
   _count: { select: { entregas: true } },
   entregas: { orderBy: { versao: "desc" }, take: 1, select: { enviadoEm: true } },

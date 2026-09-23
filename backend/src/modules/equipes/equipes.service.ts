@@ -28,7 +28,15 @@ import type {
   StageBlockersQuery,
   UpdateTeamInput,
 } from "./equipes.schemas";
-import { carregarJornada, criarJornada, etapaParaApi, numeroColuna, recalcularStatusJornada, type EtapaDaJornada } from "./jornada";
+import {
+  carregarJornada,
+  criarJornada,
+  entregaveisFinais,
+  etapaParaApi,
+  numeroColuna,
+  recalcularStatusJornada,
+  type EtapaDaJornada,
+} from "./jornada";
 
 // ---------------------------------------------------------------------------
 // Consultas (RF-06, RF-07, RF-08)
@@ -100,7 +108,8 @@ export async function board(usuario: UsuarioAutenticado, filtros: ListTeamsQuery
 
 /**
  * Carrega a equipe garantindo o escopo. Fora do escopo = 403 (o usuário
- * precisa saber que é permissão, não id errado); inexistente = 404.
+ * precisa saber que é permissão, não id errado); inexistente ou excluída
+ * (para quem não é admin) = 404.
  */
 export async function carregarEquipeNoEscopo(usuario: UsuarioAutenticado, equipeId: string): Promise<EquipeCardRow> {
   const equipe = await prisma.equipe.findFirst({
@@ -109,8 +118,8 @@ export async function carregarEquipeNoEscopo(usuario: UsuarioAutenticado, equipe
   });
   if (equipe) return equipe;
 
-  const existe = await prisma.equipe.count({ where: { id: equipeId } });
-  if (existe) throw new ForbiddenError("Você não tem acesso a esta equipe.", "TEAM_OUT_OF_SCOPE");
+  const existe = await prisma.equipe.findUnique({ where: { id: equipeId }, select: { excluidaEm: true } });
+  if (existe && !existe.excluidaEm) throw new ForbiddenError("Você não tem acesso a esta equipe.", "TEAM_OUT_OF_SCOPE");
   throw new NotFoundError("Equipe não encontrada.", "TEAM_NOT_FOUND");
 }
 
@@ -134,11 +143,11 @@ function exigirGestorOuLider(usuario: UsuarioAutenticado, equipe: EquipeCardRow)
   throw new ForbiddenError("Apenas o líder da equipe, o mentor ou a coordenação podem fazer isso.", "NOT_TEAM_MANAGER");
 }
 
-/** RF-08 — detalhe com integrantes, jornada e histórico. */
+/** RF-08 — detalhe com integrantes, jornada, histórico e os entregáveis finais (RN-02). */
 export async function detalheEquipe(usuario: UsuarioAutenticado, equipeId: string) {
   const equipe = await carregarEquipeNoEscopo(usuario, equipeId);
 
-  const [integrantes, historico] = await Promise.all([
+  const [integrantes, historico, finais] = await Promise.all([
     prisma.integranteEquipe.findMany({
       where: { equipeId, saiuEm: null },
       include: incluirIntegrante,
@@ -153,6 +162,7 @@ export async function detalheEquipe(usuario: UsuarioAutenticado, equipeId: strin
       },
       orderBy: { criadoEm: "asc" },
     }),
+    entregaveisFinais(equipeId),
   ]);
 
   const jornada: EtapaDaJornada[] = equipe.etapas;
@@ -176,6 +186,12 @@ export async function detalheEquipe(usuario: UsuarioAutenticado, equipeId: strin
       forced: h.forcado,
       changedAt: h.criadoEm,
       changedByName: h.alteradoPor?.nome ?? null,
+    })),
+    finalDeliverables: finais.map((e) => ({
+      templateId: e.modeloId,
+      title: e.titulo,
+      taskId: e.tarefaId,
+      status: e.status ? STATUS_TAREFA_PARA_API[e.status] : null,
     })),
   };
 }
@@ -631,6 +647,9 @@ async function cursoPorNome(nome: string, db: Db) {
  * cria uma nova sem senha, que recebe o token de ativação por e-mail (RF-02).
  * Com `senhaHash` (o líder, senha do formulário) não há ativação: quem chama
  * envia o link de confirmação do e-mail.
+ *
+ * RNF-02: só o líder aceitou os termos no formulário. O consentimento de um
+ * colega fica vazio até ele mesmo aceitar, ao ativar a conta.
  */
 async function garantirAluno(pessoa: Pessoa, equipeNome: string, db: Db, senhaHash: string | null = null) {
   const existente = await db.usuario.findUnique({ where: { email: pessoa.email } });
@@ -661,7 +680,7 @@ async function garantirAluno(pessoa: Pessoa, equipeNome: string, db: Db, senhaHa
       telefone: pessoa.phone ?? null,
       cursoId: curso.id,
       semestre: semestreDaApi(pessoa.semester),
-      consentimentoLgpdEm: new Date(),
+      consentimentoLgpdEm: senhaHash === null ? null : new Date(),
     },
   });
   if (senhaHash === null) {
@@ -701,8 +720,12 @@ export async function cadastrarEquipe(input: RegisterTeamInput, ip: string | nul
 
     const { usuario: lider } = await garantirAluno(input.leader, nomeEquipe, tx, senhaHash);
     if (liderExistente) {
-      // Conta criada por outro líder e nunca ativada: a senha do formulário passa a valer.
-      await tx.usuario.update({ where: { id: lider.id }, data: { senhaHash, nome: input.leader.name, telefone: input.leader.phone } });
+      // Conta criada por outro líder e nunca ativada: a senha do formulário passa a valer,
+      // e o aceite dos termos (RNF-02) agora é da própria pessoa.
+      await tx.usuario.update({
+        where: { id: lider.id },
+        data: { senhaHash, nome: input.leader.name, telefone: input.leader.phone, consentimentoLgpdEm: new Date() },
+      });
     }
     // Validação do e-mail: a senha já vale, mas o login só abre depois do link de confirmação.
     await enviarConfirmacaoEmail(

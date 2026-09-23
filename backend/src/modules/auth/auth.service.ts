@@ -11,7 +11,7 @@ import {
   type ApiRole,
 } from "../../shared/dto";
 import { emailAtivacaoConta, emailConfirmacaoEmail, emailRecuperacaoSenha } from "../../shared/email/templates";
-import { ForbiddenError, UnauthorizedError } from "../../shared/errors";
+import { BadRequestError, ForbiddenError, UnauthorizedError } from "../../shared/errors";
 import { ACCESS_TOKEN_TTL_SEGUNDOS, assinarAccessToken } from "../../shared/jwt";
 import { carregarJornada, numeroColuna } from "../equipes/jornada";
 import { enfileirar, processarFilaEmSegundoPlano } from "../notificacoes/notificacoes.service";
@@ -234,16 +234,24 @@ export async function renovar(refreshToken: string, contexto: Contexto): Promise
   return emitirSessao(usuario, contexto);
 }
 
-export async function sair(refreshToken: string | undefined, usuarioId: string | undefined, contexto: Contexto) {
-  if (refreshToken) {
-    await prisma.sessao.updateMany({
-      where: { refreshTokenHash: hashDoToken(refreshToken), revogadaEm: null },
-      data: { revogadaEm: new Date() },
-    });
-  }
-  if (usuarioId) {
-    await registrarAuditoria({ usuarioId, acao: "LOGOUT", entidade: "usuario", entidadeId: usuarioId, ip: contexto.ip });
-  }
+/**
+ * Encerra a sessão do refresh token. A rota de logout não exige o access
+ * token (ele pode já ter vencido), então o usuário da auditoria vem da
+ * própria sessão.
+ */
+export async function sair(refreshToken: string | undefined, contexto: Contexto) {
+  if (!refreshToken) return;
+  const sessao = await prisma.sessao.findUnique({ where: { refreshTokenHash: hashDoToken(refreshToken) } });
+  if (!sessao || sessao.revogadaEm) return;
+
+  await prisma.sessao.update({ where: { id: sessao.id }, data: { revogadaEm: new Date() } });
+  await registrarAuditoria({
+    usuarioId: sessao.usuarioId,
+    acao: "LOGOUT",
+    entidade: "usuario",
+    entidadeId: sessao.usuarioId,
+    ip: contexto.ip,
+  });
 }
 
 export async function usuarioAtual(usuarioId: string): Promise<UsuarioSessao> {
@@ -405,8 +413,15 @@ export async function solicitarRecuperacao(email: string, contexto: Contexto) {
  * RF-01/RF-02 — define a senha a partir do token do e-mail (ativação ou
  * recuperação). Uso único, com validade; derruba as sessões abertas. Como o
  * link chegou pelo e-mail, usá-lo também confirma o endereço.
+ *
+ * RNF-02: quem ainda não aceitou a política de privacidade (o colega que o
+ * líder cadastrou, a conta criada pela coordenação) aceita aqui — sem o
+ * aceite, 400 LGPD_CONSENT_REQUIRED e a tela mostra a caixa de seleção.
  */
-export async function definirSenha(input: { token: string; password: string }, contexto: Contexto) {
+export async function definirSenha(
+  input: { token: string; password: string; lgpdConsent?: boolean },
+  contexto: Contexto,
+) {
   const registro = await prisma.tokenUsuario.findUnique({
     where: { tokenHash: hashDoToken(input.token) },
     include: { usuario: true },
@@ -422,13 +437,25 @@ export async function definirSenha(input: { token: string; password: string }, c
     throw new UnauthorizedError("Este link é inválido.", "INVALID_RESET_TOKEN");
   }
 
+  const precisaConsentir = registro.usuario.consentimentoLgpdEm === null;
+  if (precisaConsentir && input.lgpdConsent !== true) {
+    throw new BadRequestError(
+      "Para ativar a conta, leia e aceite a política de privacidade (LGPD).",
+      "LGPD_CONSENT_REQUIRED",
+    );
+  }
+
   const senhaHash = await gerarHashSenha(input.password);
 
   await prisma.$transaction(async (tx) => {
     await tx.tokenUsuario.update({ where: { id: registro.id }, data: { usadoEm: new Date() } });
     await tx.usuario.update({
       where: { id: registro.usuarioId },
-      data: { senhaHash, emailConfirmadoEm: registro.usuario.emailConfirmadoEm ?? new Date() },
+      data: {
+        senhaHash,
+        emailConfirmadoEm: registro.usuario.emailConfirmadoEm ?? new Date(),
+        ...(precisaConsentir ? { consentimentoLgpdEm: new Date() } : {}),
+      },
     });
     await tx.sessao.updateMany({
       where: { usuarioId: registro.usuarioId, revogadaEm: null },
@@ -440,6 +467,7 @@ export async function definirSenha(input: { token: string; password: string }, c
         acao: registro.tipo === "ATIVACAO_CONTA" ? "CONTA_ATIVADA" : "SENHA_REDEFINIDA",
         entidade: "usuario",
         entidadeId: registro.usuarioId,
+        ...(precisaConsentir ? { detalhes: { consentimentoLgpd: true } } : {}),
         ip: contexto.ip,
       },
       tx,

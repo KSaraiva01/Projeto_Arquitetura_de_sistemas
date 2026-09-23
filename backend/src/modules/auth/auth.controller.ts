@@ -17,35 +17,53 @@ import type {
 import * as service from "./auth.service";
 
 const COOKIE_REFRESH = "infohub_refresh_token";
+/** Marca a sessão aberta sem "Lembrar-me": a renovação mantém o cookie como de sessão. */
+const COOKIE_TEMPORARIA = "infohub_sessao_temporaria";
 const CAMINHO_COOKIE = "/api/auth";
+
+const opcoesCookie = {
+  httpOnly: true,
+  secure: env.isProduction,
+  sameSite: "lax", // mesmo domínio: API e frontend saem do mesmo processo
+  path: CAMINHO_COOKIE,
+} as const;
 
 /**
  * O refresh token vai em cookie httpOnly (fora do alcance de XSS) e também
  * no corpo da resposta, para clientes sem cookie (Insomnia, testes, mobile).
+ * Sem "Lembrar-me" o cookie não tem validade própria: some quando o
+ * navegador fecha (a sessão no banco continua expirando no prazo normal).
  */
-function gravarCookie(res: Response, token: string) {
+function gravarCookie(res: Response, token: string, lembrar: boolean) {
   res.cookie(COOKIE_REFRESH, token, {
-    httpOnly: true,
-    secure: env.isProduction,
-    sameSite: "lax", // mesmo domínio: API e frontend saem do mesmo processo
-    path: CAMINHO_COOKIE,
-    maxAge: env.REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000,
+    ...opcoesCookie,
+    ...(lembrar ? { maxAge: env.REFRESH_TOKEN_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000 } : {}),
   });
+  if (lembrar) {
+    res.clearCookie(COOKIE_TEMPORARIA, { path: CAMINHO_COOKIE });
+  } else {
+    res.cookie(COOKIE_TEMPORARIA, "1", opcoesCookie);
+  }
 }
 
 function limparCookie(res: Response) {
   res.clearCookie(COOKIE_REFRESH, { path: CAMINHO_COOKIE });
+  res.clearCookie(COOKIE_TEMPORARIA, { path: CAMINHO_COOKIE });
+}
+
+function lerCookie(req: Request, nome: string): string | undefined {
+  return (req.cookies as Record<string, string> | undefined)?.[nome];
 }
 
 function lerRefreshToken(req: Request): string | undefined {
   const doCorpo = (req.body as RefreshInput | undefined)?.refreshToken;
-  const doCookie = (req.cookies as Record<string, string> | undefined)?.[COOKIE_REFRESH];
-  return doCorpo ?? doCookie;
+  return doCorpo ?? lerCookie(req, COOKIE_REFRESH);
 }
 
 export const login: RequestHandler = async (req, res) => {
-  const sessao = await service.login(getBody<LoginInput>(req), contextoDe(req));
-  gravarCookie(res, sessao.refreshToken);
+  const body = getBody<LoginInput>(req);
+  const sessao = await service.login(body, contextoDe(req));
+  gravarCookie(res, sessao.refreshToken, body.rememberMe !== false);
   res.status(200).json(sessao);
 };
 
@@ -53,12 +71,12 @@ export const refresh: RequestHandler = async (req, res) => {
   const token = lerRefreshToken(req);
   if (!token) throw new UnauthorizedError("Refresh token não informado.", "MISSING_REFRESH_TOKEN");
   const sessao = await service.renovar(token, contextoDe(req));
-  gravarCookie(res, sessao.refreshToken);
+  gravarCookie(res, sessao.refreshToken, !lerCookie(req, COOKIE_TEMPORARIA));
   res.status(200).json(sessao);
 };
 
 export const logout: RequestHandler = async (req, res) => {
-  await service.sair(lerRefreshToken(req), req.usuario?.id, contextoDe(req));
+  await service.sair(lerRefreshToken(req), contextoDe(req));
   limparCookie(res);
   res.status(204).send();
 };

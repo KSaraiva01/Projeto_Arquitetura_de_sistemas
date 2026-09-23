@@ -22,6 +22,8 @@ export interface UsuarioResumo {
   course: string | null;
   semester: string | null;
   isActive: boolean;
+  /** Falso = conta ainda não ativada (a pessoa não criou a senha pelo link). */
+  hasPassword: boolean;
   /** Nulo = e-mail ainda não confirmado (a pessoa não consegue entrar). */
   emailConfirmedAt: Date | null;
   createdAt: Date;
@@ -45,6 +47,7 @@ function paraResumo(u: UsuarioResumoRow): UsuarioResumo {
     course: u.curso?.nome ?? null,
     semester: semestreParaApi(u.semestre),
     isActive: u.ativo,
+    hasPassword: u.senhaHash !== null,
     emailConfirmedAt: u.emailConfirmadoEm,
     createdAt: u.criadoEm,
     mentoredTeams: u._count.mentorias,
@@ -86,7 +89,10 @@ export async function obterUsuario(id: string): Promise<UsuarioResumo> {
   return paraResumo(usuario);
 }
 
-/** RF-03 — nova conta de ADMIN/MENTOR; a pessoa define a senha pelo link de ativação. */
+/**
+ * RF-03 — nova conta de ADMIN/MENTOR; a pessoa define a senha pelo link de
+ * ativação e, nessa hora, aceita a política de privacidade (RNF-02).
+ */
 export async function criarUsuario(input: CreateUserInput, ator: Ator) {
   const existente = await prisma.usuario.findUnique({ where: { email: input.email }, select: { id: true } });
   if (existente) {
@@ -100,7 +106,6 @@ export async function criarUsuario(input: CreateUserInput, ator: Ator) {
         email: input.email,
         perfil: PERFIL_DA_API[input.role],
         telefone: input.phone ?? null,
-        consentimentoLgpdEm: new Date(),
       },
       include: incluirResumo,
     });
@@ -133,6 +138,9 @@ export async function atualizarUsuario(id: string, input: UpdateUserInput, ator:
 
   if (input.role && atual.perfil === "ALUNO") {
     throw new ConflictError("O perfil de um aluno não pode ser alterado.", "STUDENT_ROLE_LOCKED");
+  }
+  if (input.role && input.role !== "ADMIN" && atual.perfil === "ADMIN" && atual.ativo && (await contarOutrosAdminsAtivos(id)) === 0) {
+    throw new ConflictError("Este é o último administrador ativo e não pode deixar de ser administrador.", "LAST_ACTIVE_ADMIN");
   }
   const trocouEmail = input.email !== undefined && input.email !== atual.email;
   if (trocouEmail) {
@@ -218,9 +226,73 @@ export async function definirStatus(id: string, ativo: boolean, ator: Ator) {
   return paraResumo(atualizado);
 }
 
+/**
+ * Reenvia o link que falta para a pessoa entrar: o de ativação (conta ainda
+ * sem senha) ou o de confirmação do e-mail (líder que ainda não confirmou).
+ */
+export async function reenviarAcesso(id: string, ator: Ator) {
+  const usuario = await prisma.usuario.findFirst({ where: { id, excluidoEm: null } });
+  if (!usuario) throw new NotFoundError("Usuário não encontrado.", "USER_NOT_FOUND");
+  if (!usuario.ativo) throw new ConflictError("Esta conta está desativada. Ative-a antes de reenviar o acesso.", "ACCOUNT_DISABLED");
+
+  const contexto = "A coordenação do InfoHub reenviou o seu link de acesso.";
+  let message: string;
+  if (usuario.senhaHash === null) {
+    await enviarAtivacaoConta(usuario, contexto);
+    message = `Link de ativação reenviado para ${usuario.email}.`;
+  } else if (!usuario.emailConfirmadoEm) {
+    await enviarConfirmacaoEmail(usuario, contexto);
+    message = `Link de confirmação reenviado para ${usuario.email}.`;
+  } else {
+    throw new ConflictError(
+      "Esta conta já está ativa. Se a pessoa esqueceu a senha, ela mesma pode pedir um novo link na tela de login.",
+      "ACCOUNT_ALREADY_ACTIVE",
+    );
+  }
+
+  await registrarAuditoria({ usuarioId: ator.id, acao: "ACESSO_REENVIADO", entidade: "usuario", entidadeId: id, ip: ator.ip });
+  processarFilaEmSegundoPlano();
+  return { message };
+}
+
+/**
+ * A coordenação confirma o e-mail de quem já tem senha (o líder que não
+ * recebeu ou perdeu o link). Fica registrado na auditoria.
+ */
+export async function confirmarEmailManualmente(id: string, ator: Ator) {
+  const usuario = await prisma.usuario.findFirst({ where: { id, excluidoEm: null } });
+  if (!usuario) throw new NotFoundError("Usuário não encontrado.", "USER_NOT_FOUND");
+  if (usuario.senhaHash === null) {
+    throw new ConflictError(
+      "A pessoa ainda não criou a senha. Reenvie o link de ativação — criar a senha por ele já confirma o e-mail.",
+      "PASSWORD_NOT_SET",
+    );
+  }
+
+  if (!usuario.emailConfirmadoEm) {
+    await prisma.$transaction(async (tx) => {
+      await tx.usuario.update({ where: { id }, data: { emailConfirmadoEm: new Date() } });
+      await registrarAuditoria(
+        { usuarioId: ator.id, acao: "EMAIL_CONFIRMADO_PELA_COORDENACAO", entidade: "usuario", entidadeId: id, ip: ator.ip },
+        tx,
+      );
+    });
+  }
+
+  return { user: await obterUsuario(id), message: "E-mail confirmado. A pessoa já pode entrar com a senha dela." };
+}
+
 export interface ResultadoAnonimizacao {
   promotedLeaders: Array<{ teamId: string; teamName: string; newLeaderId: string; newLeaderName: string }>;
   deletedTeams: Array<{ teamId: string; teamName: string }>;
+}
+
+const NOME_REMOVIDO = "Usuário removido";
+const CORPO_REMOVIDO = "<p>(Conteúdo removido a pedido do titular dos dados — LGPD.)</p>";
+
+/** Como o nome aparece dentro do HTML dos e-mails (mesmo escape dos templates). */
+function nomeNoHtml(nome: string): string {
+  return nome.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 /**
@@ -233,6 +305,12 @@ export interface ResultadoAnonimizacao {
  * Nas equipes: o aluno sai (`saiu_em`); se era LÍDER, o integrante ativo mais
  * antigo assume; se não houver outro, a equipe é excluída logicamente (Q4).
  * Mentorias são removidas. O último admin ativo não pode ser excluído.
+ *
+ * Os dados pessoais também saem de onde tinham sido copiados: e-mails que
+ * ainda iam ser enviados à pessoa são descartados; os já enviados perdem
+ * endereço e conteúdo; o nome some dos e-mails mandados a outras pessoas
+ * ("Fulano enviou a versão 2"); o e-mail sai dos detalhes da auditoria e o IP
+ * das ações dela; as sessões (IP e navegador) são apagadas.
  */
 export async function anonimizarUsuario(id: string, ator: Ator): Promise<ResultadoAnonimizacao> {
   const atual = await prisma.usuario.findFirst({ where: { id, excluidoEm: null } });
@@ -241,6 +319,9 @@ export async function anonimizarUsuario(id: string, ator: Ator): Promise<Resulta
   if (atual.perfil === "ADMIN" && (await contarOutrosAdminsAtivos(id)) === 0) {
     throw new ConflictError("Este é o último administrador ativo do sistema e não pode ser excluído.", "LAST_ACTIVE_ADMIN");
   }
+
+  // Quem pede a própria exclusão não deixa o IP gravado nas ações do pedido.
+  const ipAtor = ator.id === id ? null : (ator.ip ?? null);
 
   return prisma.$transaction(async (tx) => {
     const resultado: ResultadoAnonimizacao = { promotedLeaders: [], deletedTeams: [] };
@@ -277,7 +358,7 @@ export async function anonimizarUsuario(id: string, ator: Ator): Promise<Resulta
             entidade: "equipe",
             entidadeId: equipe.id,
             detalhes: { motivo: "LGPD: líder pediu exclusão da conta", novoLiderId: substituto.id },
-            ip: ator.ip,
+            ip: ipAtor,
           },
           tx,
         );
@@ -291,24 +372,43 @@ export async function anonimizarUsuario(id: string, ator: Ator): Promise<Resulta
             entidade: "equipe",
             entidadeId: equipe.id,
             detalhes: { motivo: "LGPD: único integrante pediu exclusão da conta" },
-            ip: ator.ip,
+            ip: ipAtor,
           },
           tx,
         );
       }
     }
 
+    const emailAnonimo = `removido+${id}@anonimizado.local`;
+
     await tx.integranteEquipe.updateMany({ where: { usuarioId: id, saiuEm: null }, data: { saiuEm: agora } });
     await tx.mentorEquipe.deleteMany({ where: { mentorId: id } });
-    await tx.sessao.updateMany({ where: { usuarioId: id, revogadaEm: null }, data: { revogadaEm: agora } });
+    await tx.sessao.deleteMany({ where: { usuarioId: id } });
     await tx.tokenUsuario.deleteMany({ where: { usuarioId: id } });
     await tx.preferenciaNotificacao.deleteMany({ where: { usuarioId: id } });
+
+    // E-mails para a pessoa: o que não saiu é descartado; o que saiu fica só como registro do envio.
+    await tx.notificacao.deleteMany({ where: { destinatarioId: id, status: { not: "ENVIADA" } } });
+    await tx.notificacao.updateMany({
+      where: { destinatarioId: id },
+      data: { emailDestino: emailAnonimo, corpo: CORPO_REMOVIDO, erro: null },
+    });
+    // O nome completo nos e-mails enviados a outras pessoas. Com uma palavra só,
+    // trocar o nome poderia atingir o texto de terceiros — nesse caso fica.
+    if (atual.nome.trim().includes(" ")) {
+      for (const nome of new Set([atual.nome, nomeNoHtml(atual.nome)])) {
+        await tx.$executeRaw`UPDATE notificacoes SET corpo = replace(corpo, ${nome}, ${NOME_REMOVIDO}) WHERE strpos(corpo, ${nome}) > 0`;
+      }
+    }
+    // Auditoria: o histórico de ações fica, mas sem o e-mail e sem o IP da pessoa.
+    await tx.$executeRaw`UPDATE registros_auditoria SET detalhes = replace(detalhes::text, ${atual.email}, ${emailAnonimo})::jsonb WHERE strpos(detalhes::text, ${atual.email}) > 0`;
+    await tx.registroAuditoria.updateMany({ where: { usuarioId: id }, data: { ip: null } });
 
     await tx.usuario.update({
       where: { id },
       data: {
-        nome: "Usuário removido",
-        email: `removido+${id}@anonimizado.local`,
+        nome: NOME_REMOVIDO,
+        email: emailAnonimo,
         telefone: null,
         senhaHash: null,
         cursoId: null,
@@ -325,7 +425,7 @@ export async function anonimizarUsuario(id: string, ator: Ator): Promise<Resulta
         entidade: "usuario",
         entidadeId: id,
         detalhes: { perfil: atual.perfil, ...resultado },
-        ip: ator.ip,
+        ip: ipAtor,
       },
       tx,
     );
