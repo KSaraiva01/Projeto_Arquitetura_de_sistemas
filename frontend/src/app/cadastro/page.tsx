@@ -21,6 +21,9 @@ type Option = { id: string; name: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Q5 — mesmo limite da API (MAX_INTEGRANTES_EQUIPE): o líder mais 10 colegas. */
+const MAX_COLEGAS = 10;
+
 /** Campo da API (422) → campo do formulário, para o erro aparecer no lugar certo. */
 const API_FIELD_TO_FORM: Record<string, string> = {
   "team.name": "ideaName",
@@ -82,6 +85,7 @@ export default function CadastroPage() {
   }, []);
 
   function addMember() {
+    if (members.length >= MAX_COLEGAS) return;
     setMembers([...members, { name: "", email: "", course: "" }]);
   }
 
@@ -323,14 +327,15 @@ export default function CadastroPage() {
               <div>
                 <h2 className="text-lg font-semibold text-foreground">Equipe</h2>
                 <p className="text-sm text-muted">
-                  Adicione os colegas que farão parte da equipe (opcional). Cada um recebe um e-mail para criar a
-                  própria senha.
+                  Adicione os colegas que farão parte da equipe (opcional, até {MAX_COLEGAS}). Cada um recebe um e-mail
+                  para criar a própria senha.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={addMember}
-                className="flex shrink-0 items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium"
+                disabled={members.length >= MAX_COLEGAS}
+                className="flex shrink-0 items-center gap-1.5 text-sm text-primary hover:text-primary-dark font-medium disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus className="w-4 h-4" /> Adicionar
               </button>

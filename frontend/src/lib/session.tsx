@@ -22,6 +22,19 @@ interface SessionState {
 const SessionContext = createContext<SessionState | null>(null);
 
 /**
+ * Usuário da sessão guardada, ou `null`. Sem token guardado não vale a pena
+ * chamar a API: segue como visitante.
+ */
+async function buscarUsuario(): Promise<ApiSessionUser | null> {
+  if (!getAccessToken()) return null;
+  try {
+    return await api.me();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Sessão do usuário logado.
  *
  * Na montagem tenta reconstruir a sessão: se houver access token guardado,
@@ -33,27 +46,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    // Sem token guardado não vale a pena chamar a API: encerramos o
-    // carregamento e seguimos como visitante.
-    if (!getAccessToken()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const current = await api.me();
-      setUser(current);
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
+    setUser(await buscarUsuario());
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let descartar = false;
+    void buscarUsuario().then((atual) => {
+      if (descartar) return;
+      setUser(atual);
+      setLoading(false);
+    });
+    return () => {
+      descartar = true;
+    };
+  }, []);
 
   const signOut = useCallback(async () => {
     await api.logout();

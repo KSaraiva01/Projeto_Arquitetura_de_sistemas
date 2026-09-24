@@ -47,7 +47,8 @@ npm run dev               # http://localhost:3000 — API em /api, frontend com 
 ```
 
 Outros scripts: `npm run build` (Prisma + tsc + Next), `npm start` (`db:preparar` + servidor de produção — é o que o
-container roda), `npm run typecheck`, `npm run jobs:run` (executa a rotina agendada uma vez), `npm run db:studio`,
+container roda), `npm run typecheck`, `npm run lint` (ESLint do frontend), `npm test` (ver [Testes](#testes)),
+`npm run jobs:run` (executa a rotina agendada uma vez), `npm run db:studio`,
 `npm run db:migrate` (nova migration em dev), `npm run db:reset` (zera o schema, com confirmação),
 `npm run db:recriar` (zera + migrations + seed, sem confirmação — ambos protegidos pelo `scripts/checar-schema.cjs`),
 `npm run backup` e `npm run backup:restaurar` (ver [Backup](#backup-e-restauração-rnf-07)).
@@ -55,19 +56,35 @@ container roda), `npm run typecheck`, `npm run jobs:run` (executa a rotina agend
 **Atenção:** o PostgreSQL da faculdade é compartilhado entre as duplas, cada uma no seu schema. Este projeto usa
 `infohub_losekann`; nunca aponte a `DATABASE_URL` para o schema `public`. Detalhes em [docs/banco-de-dados.md](docs/banco-de-dados.md).
 
-## E-mails (Resend)
+## E-mails
 
-Todo e-mail entra primeiro na fila `notificacoes` e sai em segundo plano (e pela rotina agendada). Com
-`MAIL_DRIVER=resend` o envio usa o SDK oficial da Resend: cada e-mail leva a chave de idempotência `notificacao/<id>`
-(repetir um envio nunca duplica o e-mail), o ID devolvido pela Resend fica em `notificacoes.id_mensagem_provedor`
-e só falhas passageiras (rede, limite de envio, 5xx) voltam para a fila. Endereço inválido ou domínio não
-verificado viram `FALHOU` na hora, com o motivo em `erro`.
+Todo e-mail entra primeiro na fila `notificacoes` e sai em segundo plano (e pela rotina agendada). O envio depende de
+`MAIL_DRIVER`: `console` só imprime no log (ninguém recebe nada), `smtp` usa qualquer servidor SMTP e `resend` usa a
+API da Resend. Com qualquer driver, `APP_URL` precisa ser a URL pública, sem barra no final — é ela que vai nos links.
+Falha passageira (rede, limite de envio, erro do provedor) volta para a fila; recusa definitiva (senha errada,
+endereço inválido, domínio não verificado) vira `FALHOU` na hora, com o motivo em `notificacoes.erro` e no log.
+
+**Gmail (SMTP)** — o caminho mais simples sem domínio próprio; entrega para qualquer endereço.
+
+1. Na conta Gmail que vai enviar (de preferência uma só do sistema), ative a verificação em duas etapas e crie uma
+   senha de app em [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+2. `MAIL_DRIVER=smtp`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_SECURE=true`, `SMTP_USER=<a conta>`,
+   `SMTP_PASS=<a senha de app, sem espaços>` e `MAIL_FROM=InfoHub <a conta>`.
+3. Se o log mostrar timeout na porta 465 (rede bloqueando), use `SMTP_PORT=587` com `SMTP_SECURE=false`.
+
+**Resend** — usa o SDK oficial: cada e-mail leva a chave de idempotência `notificacao/<id>` (repetir um envio nunca
+duplica o e-mail) e o ID devolvido pela Resend fica em `notificacoes.id_mensagem_provedor`.
 
 1. Crie uma API key em [resend.com/api-keys](https://resend.com/api-keys) (permissão *Sending access*) → `RESEND_API_KEY`.
 2. Verifique um domínio em [resend.com/domains](https://resend.com/domains) e use-o no remetente:
    `MAIL_FROM="InfoHub <nao-responda@seu-dominio.com>"`. Sem domínio próprio, `MAIL_FROM="InfoHub <onboarding@resend.dev>"`
    serve só para testes: a Resend entrega apenas para o e-mail dono da conta.
-3. `MAIL_DRIVER=resend` e `APP_URL` com a URL pública — é ela que vai nos links dos e-mails.
+3. `MAIL_DRIVER=resend`.
+
+**Contas de demonstração.** O admin padrão e os mentores e alunos do seed têm endereços fictícios, mas do domínio real
+da AMF — podem ser de outras pessoas. Por isso, com qualquer driver, e-mail para eles nunca sai: aparece só no log
+(`E-MAIL (conta de demonstração — não enviado)`) e fica como `ENVIADA`, sem `id_mensagem_provedor`. Os logins continuam
+os mesmos. A lista está em [backend/src/shared/email/demonstracao.ts](backend/src/shared/email/demonstracao.ts).
 
 **Validação do e-mail.** O líder cria a senha no cadastro, mas só entra depois de abrir o link de confirmação
 (`/confirmar-email?token=…`, válido por `ACTIVATION_EXPIRES_IN_HOURS`); até lá o login responde `EMAIL_NOT_CONFIRMED`
@@ -97,6 +114,22 @@ A restauração roda em uma transação (ou volta tudo, ou nada muda), exige que
 backup e recupera os arquivos de entrega que faltarem. No Coolify, rode pelo *Terminal* do container. Os backups
 contêm dados pessoais: o volume `/app/backups` não pode ser público (ver [docs/lgpd.md](docs/lgpd.md)).
 
+## Testes
+
+`npm test` roda os testes de ponta a ponta da API (pasta [testes/](testes/)) contra um PostgreSQL **descartável** —
+o seu, local, nunca o da faculdade:
+
+```bash
+TEST_DATABASE_URL="postgresql://postgres:senha@localhost:5432/postgres?schema=infohub_teste" npm test
+npm test -- 03            # só os arquivos cujo nome contém "03"
+```
+
+Antes de cada arquivo o schema é apagado e recriado (migrations + seed da G1), então todo arquivo começa do mesmo
+cenário. Por segurança o schema precisa terminar em `_teste` e o `.env` do projeto não é lido: os e-mails saem só pelo
+driver console (o teste de reenvio usa uma Resend falsa, local). Cobrem o formulário e a ativação por token, login e
+recuperação, kanban e filtros, jornada e RN-01/RN-02, tarefas, entregas e versões, lembretes e atraso automático,
+controle de acesso, exclusão lógica e LGPD, relatórios/CSV, o reenvio de e-mail e o backup com restauração.
+
 ## G1 — o que é avaliado e como o projeto atende
 
 | Requisito de entrega (slide "G1: o que será avaliado")                     | Como está aqui |
@@ -120,7 +153,7 @@ tentar avançar (bloqueia), aprovar a entrega e então avançar para a Etapa 2.
 Credenciais: admin `admin@infohub.amf.edu.br` / `Admin@123`; mentores `ana@amf.edu.br`, `ricardo@amf.edu.br`,
 `paula@amf.edu.br`, `marcos@amf.edu.br` / `Mentor@123`; alunos `lucas@aluno.amf.edu.br` (líder EcoTrack),
 `mariana@aluno.amf.edu.br` (líder MedConnect), `pedro@aluno.amf.edu.br` (líder AgroSense), `fernanda@aluno.amf.edu.br`
-(integrante) etc. / `Aluno@123`.
+(integrante) etc. / `Aluno@123`. Essas contas nunca recebem e-mail de verdade — ver [E-mails](#e-mails).
 
 ## Deploy no Coolify
 
@@ -132,7 +165,7 @@ Um único resource (Application), apontando para este repositório na branch `in
 | Install / Build / Start command               | Vazios — vêm do Dockerfile (`CMD npm start`). **Não** use `npm run dev` em produção. |
 | Pre-deployment / Post-deployment              | Vazios. Migrations e seed já rodam dentro do `npm start`; não repita aqui. (Um `npx prisma db:seed` nesse campo falha com `Unknown command "db:seed"`: `db:seed` é o nome do script npm, e o comando do Prisma é `prisma db seed`.) |
 | Networking → **Ports exposes**                | `3000` (porta interna do container, a mesma do Dockerfile). Se o acesso for por IP:porta em vez de domínio, acrescente um *Port mapping* `<porta externa>:3000`, ex.: `3008:3000`. |
-| Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` (`resend` + `RESEND_API_KEY` + `MAIL_FROM` — ver [E-mails](#e-mails-resend); `console` só imprime no log e **ninguém recebe e-mail**). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR`, `BACKUP_ENABLED`, `BACKUP_DIR` e `TZ` já vêm do Dockerfile; `RETENTION_*` e `BACKUP_*` têm padrões (ver `.env.example`). |
+| Environment variables                         | `DATABASE_URL` (com `?schema=infohub_losekann`), `JWT_SECRET` (aleatório, ≥ 32 caracteres), `APP_URL` (URL pública — vai nos links dos e-mails), `SEED_ADMIN_NOME/EMAIL/SENHA`, `MAIL_DRIVER` e as variáveis do envio (`smtp` com o Gmail ou `resend` — ver [E-mails](#e-mails); `console` só imprime no log e **ninguém recebe e-mail**). `NODE_ENV`, `PORT`, `HOST`, `UPLOADS_DIR`, `BACKUP_ENABLED`, `BACKUP_DIR` e `TZ` já vêm do Dockerfile; `RETENTION_*` e `BACKUP_*` têm padrões (ver `.env.example`). |
 | Storages                                      | **Volume Mount** com destino `/app/uploads` (arquivos das entregas — inclusive os PDFs do cenário) e outro com destino `/app/backups` (backups diários — sem ele, somem a cada deploy). |
 | Healthchecks (opcional)                       | `GET /api/health` na porta `3000`. A imagem já traz um `HEALTHCHECK` equivalente. |
 

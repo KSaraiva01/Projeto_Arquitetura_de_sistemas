@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
@@ -16,25 +16,40 @@ export function useTheme() {
   return useContext(ThemeContext);
 }
 
-export default function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
-  const [mounted, setMounted] = useState(false);
+/**
+ * O tema vive no localStorage. A classe `dark` do <html> é aplicada pelo
+ * script do layout antes da pintura e, depois, só pelo toggleTheme. No
+ * servidor e na hidratação vale "light"; logo em seguida o React lê o valor do
+ * navegador, sem erro de hidratação.
+ */
+const CHAVE = "infohub-theme";
+const ouvintes = new Set<() => void>();
+/** Escolha feita nesta página — vale mesmo se o localStorage estiver bloqueado. */
+let escolhido: Theme | null = null;
 
-  useEffect(() => {
-    const saved = localStorage.getItem("infohub-theme") as Theme | null;
-    if (saved) {
-      setTheme(saved);
-      document.documentElement.classList.toggle("dark", saved === "dark");
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
-      document.documentElement.classList.add("dark");
-    }
-    setMounted(true);
-  }, []);
+function lerTema(): Theme {
+  if (escolhido) return escolhido;
+  try {
+    const salvo = localStorage.getItem(CHAVE);
+    if (salvo === "light" || salvo === "dark") return salvo;
+  } catch {
+    // Armazenamento bloqueado: segue a preferência do sistema.
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function assinar(avisar: () => void) {
+  ouvintes.add(avisar);
+  return () => {
+    ouvintes.delete(avisar);
+  };
+}
+
+export default function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const theme = useSyncExternalStore<Theme>(assinar, lerTema, () => "light");
 
   function toggleTheme() {
     const next = theme === "light" ? "dark" : "light";
-    setTheme(next);
 
     // As cores cruzam em 200ms em vez de piscar. A classe entra só durante
     // a troca para não deixar uma transição global ligada o tempo todo.
@@ -43,11 +58,13 @@ export default function ThemeProvider({ children }: { children: React.ReactNode 
     root.classList.toggle("dark", next === "dark");
     window.setTimeout(() => root.classList.remove("theme-transition"), 250);
 
-    localStorage.setItem("infohub-theme", next);
-  }
-
-  if (!mounted) {
-    return <>{children}</>;
+    escolhido = next;
+    try {
+      localStorage.setItem(CHAVE, next);
+    } catch {
+      // Sem armazenamento o tema vale só até recarregar a página.
+    }
+    ouvintes.forEach((avisar) => avisar());
   }
 
   return (

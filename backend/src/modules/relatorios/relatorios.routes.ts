@@ -90,8 +90,14 @@ reportsRouter.get("/dashboard", validarQuery(filtrosSchema), async (req, res) =>
   });
 });
 
+/**
+ * Texto que começa com =, +, -, @, tab ou CR vira fórmula quando o arquivo é
+ * aberto no Excel — e o nome da ideia, por exemplo, vem do formulário público.
+ * Esses textos ganham um apóstrofo na frente, que o Excel não mostra.
+ */
 function celulaCsv(valor: unknown): string {
-  const texto = valor === null || valor === undefined ? "" : String(valor);
+  let texto = valor === null || valor === undefined ? "" : String(valor);
+  if (typeof valor === "string" && /^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`;
   return /[";\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
 }
 

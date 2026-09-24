@@ -91,6 +91,9 @@ export const noteParamSchema = z.object({
   noteId: z.string().uuid("Identificador de anotação inválido."),
 });
 
+/** Q5 — tamanho máximo da equipe: o líder mais até 10 colegas, no cadastro e ao incluir alguém depois. */
+export const MAX_INTEGRANTES_EQUIPE = 11;
+
 const pessoaSchema = z.object({
   name: z.string().trim().min(3, "Informe o nome completo.").max(160),
   email: emailSchema,
@@ -117,7 +120,10 @@ export const registerTeamSchema = z.object({
     semester: z.union([z.string().trim().min(1, "Informe o semestre."), z.number().int()]),
     password: senhaSchema,
   }),
-  members: z.array(pessoaSchema).max(10).default([]),
+  members: z
+    .array(pessoaSchema)
+    .max(MAX_INTEGRANTES_EQUIPE - 1, `A equipe pode ter até ${MAX_INTEGRANTES_EQUIPE - 1} colegas além do líder.`)
+    .default([]),
   lgpdConsent: z.literal(true, { message: "É preciso aceitar o tratamento de dados (LGPD)." }),
 });
 

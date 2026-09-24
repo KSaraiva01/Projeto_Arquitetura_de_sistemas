@@ -45,6 +45,10 @@ const STATUS_STYLES: Record<ApiTaskStatus, { dot: string; chip: string }> = {
 
 const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
+function mensagemErroCalendario(err: unknown): string {
+  return err instanceof ApiError ? err.message : "Não foi possível carregar o calendário. A API está no ar?";
+}
+
 function toIsoDate(date: Date): string {
   return format(date, "yyyy-MM-dd");
 }
@@ -81,32 +85,48 @@ export default function CalendarView({ showTeamName = true }: CalendarViewProps)
   const rangeFrom = gridDays[0] ? toIsoDate(gridDays[0]) : "";
   const rangeTo = gridDays.at(-1) ? toIsoDate(gridDays.at(-1)!) : "";
 
+  const buscar = useCallback(
+    () => api.calendar({ from: rangeFrom, to: rangeTo, includeReminders }),
+    [rangeFrom, rangeTo, includeReminders],
+  );
+
+  // Idem KanbanBoard: os dados novos e a limpeza do erro entram juntos.
+  const aplicar = useCallback((resultado: ApiCalendar) => {
+    setData(resultado);
+    setError(null);
+  }, []);
+
   const load = useCallback(async () => {
     if (!rangeFrom || !rangeTo) return;
-
     try {
-      const resultado = await api.calendar({
-        from: rangeFrom,
-        to: rangeTo,
-        includeReminders,
-      });
-      // Idem KanbanBoard: os dados novos e a limpeza do erro entram juntos.
-      setData(resultado);
-      setError(null);
+      aplicar(await buscar());
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Não foi possível carregar o calendário. A API está no ar?",
-      );
+      setError(mensagemErroCalendario(err));
     } finally {
       setLoading(false);
     }
-  }, [rangeFrom, rangeTo, includeReminders]);
+  }, [rangeFrom, rangeTo, buscar, aplicar]);
 
+  // Troca de mês: a resposta de um mês anterior que chegue depois é descartada.
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!rangeFrom || !rangeTo) return;
+    let descartar = false;
+    buscar()
+      .then(
+        (resultado) => {
+          if (!descartar) aplicar(resultado);
+        },
+        (err) => {
+          if (!descartar) setError(mensagemErroCalendario(err));
+        },
+      )
+      .finally(() => {
+        if (!descartar) setLoading(false);
+      });
+    return () => {
+      descartar = true;
+    };
+  }, [rangeFrom, rangeTo, buscar, aplicar]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, ApiCalendarEvent[]>();

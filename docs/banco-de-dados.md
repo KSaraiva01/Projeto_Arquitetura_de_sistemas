@@ -204,3 +204,7 @@ Credenciais da demonstração:
 | Líder      | `mariana@aluno.amf.edu.br` (MedConnect)        | `Aluno@123`  |
 | Líder      | `pedro@aluno.amf.edu.br` (AgroSense)           | `Aluno@123`  |
 | Integrante | `fernanda@aluno.amf.edu.br` (EcoTrack)         | `Aluno@123`  |
+
+Os endereços são fictícios, mas do domínio real da AMF: essas contas (e o admin padrão) nunca recebem e-mail de
+verdade. Com qualquer `MAIL_DRIVER`, o e-mail delas só aparece no log e fica `ENVIADA` sem `id_mensagem_provedor`
+(lista em `backend/src/shared/email/demonstracao.ts`; o seed avisa se alguém da demo ficar fora dela).

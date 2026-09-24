@@ -19,7 +19,9 @@
  *     (já ENVIADAS, com as mesmas chaves de idempotência dos serviços) e
  *     auditoria. Se a demo já existir, ela é pulada — um redeploy não desfaz o
  *     que foi mexido na apresentação (`npm run db:reset` recria do zero).
- *     Senhas: Mentor@123 (mentores) e Aluno@123 (alunos).
+ *     Senhas: Mentor@123 (mentores) e Aluno@123 (alunos). Os endereços são
+ *     fictícios, mas do domínio real da AMF: essas contas (e o admin padrão)
+ *     nunca recebem e-mail de verdade — ver backend/src/shared/email/demonstracao.ts.
  */
 import "dotenv/config";
 import fs from "node:fs";
@@ -29,6 +31,7 @@ import { env } from "../backend/src/config/env";
 import type { EstagioIdeia, Prisma, StatusTarefa, TipoNotificacao } from "../backend/src/generated/prisma/client";
 import { prisma } from "../backend/src/lib/prisma";
 import { dataDoLembrete } from "../backend/src/shared/datas";
+import { EMAIL_ADMIN_PADRAO, ehEmailDeDemonstracao } from "../backend/src/shared/email/demonstracao";
 import {
   emailEntregaAvaliada,
   emailEntregaRecebida,
@@ -195,7 +198,7 @@ async function seedReferencia() {
   log(`modelos de tarefa: ${MODELOS_TAREFA.length}`);
 
   // Conta de administrador (RF-03). A senha só é (re)definida na criação.
-  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@infohub.amf.edu.br";
+  const adminEmail = process.env.SEED_ADMIN_EMAIL ?? EMAIL_ADMIN_PADRAO;
   const adminNome = process.env.SEED_ADMIN_NOME ?? "Administrador InfoHub";
   const adminSenha = process.env.SEED_ADMIN_SENHA ?? "Admin@123";
 
@@ -517,6 +520,17 @@ async function auditar(tx: Tx, usuarioId: string | null, acao: string, entidade:
 // --- Montagem do cenário --------------------------------------------------------
 
 async function seedDemo(admin: Pessoa) {
+  // Os endereços da demo são do domínio real da AMF: só quem está na lista de
+  // demonstração fica sem receber e-mail de verdade (shared/email/demonstracao.ts).
+  const pessoas = [...MENTORES, ...EQUIPES_DEMO.flatMap((eq) => [eq.lider, ...eq.integrantes])];
+  const foraDaLista = pessoas.filter((p) => !ehEmailDeDemonstracao(p.email)).map((p) => p.email);
+  if (foraDaLista.length) {
+    console.warn(
+      `[seed] AVISO: ${foraDaLista.join(", ")} não está em EMAILS_DEMONSTRACAO — com e-mail real configurado, ` +
+        "essa conta da demonstração vai receber e-mails de verdade.",
+    );
+  }
+
   const jaExiste = await prisma.usuario.findUnique({ where: { email: EQUIPES_DEMO[0]!.lider.email } });
   if (jaExiste) {
     log("cenário de demonstração já existe — mantido como está (use `npm run db:reset` para recriar do zero)");

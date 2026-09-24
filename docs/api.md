@@ -23,7 +23,7 @@ A tradução está em `backend/src/shared/dto.ts`.
   foi confirmado — ofereça `POST /auth/resend-confirmation`), `400 LGPD_CONSENT_REQUIRED` (ativação sem o aceite da
   política de privacidade), `403 TEAM_OUT_OF_SCOPE`, `403 ONLY_TEAM_MEMBERS` (entregar/iniciar tarefa é do aluno),
   `400 TEAM_INACTIVE` (equipe excluída: só consulta), `404 *_NOT_FOUND`, `409 STAGE_REQUIREMENTS_PENDING` (RN-01, com
-  `details.pendingTasks`), `409 STUDENT_ALREADY_IN_TEAM` (RN-03), `409 LAST_ACTIVE_ADMIN`, `413 UPLOAD_LIMIT_FILE_SIZE`,
+  `details.pendingTasks`), `409 STUDENT_ALREADY_IN_TEAM` (RN-03), `409 TEAM_FULL` (Q5), `409 LAST_ACTIVE_ADMIN`, `413 UPLOAD_LIMIT_FILE_SIZE`,
   `429 TOO_MANY_REQUESTS`.
 - Escopo (RNF-03): ADMIN vê tudo; MENTOR só as equipes que acompanha; STUDENT só a própria equipe. Vale para
   equipes, tarefas, calendário, relatórios e download de anexos. Equipe excluída (Q4) sai do escopo de mentor e aluno
@@ -56,7 +56,8 @@ teams: [{ id, name, memberRole, journeyStage, journeyStatus }], mentoredTeamIds?
   "lgpdConsent": true
 }
 ```
-→ `201 { teamId, leaderId, memberCount, message }`. O líder cria a senha no formulário e recebe um link
+→ `201 { teamId, leaderId, memberCount, message }`. `members` aceita até 10 colegas (Q5: a equipe tem no máximo 11
+integrantes, contando o líder). O líder cria a senha no formulário e recebe um link
 `/confirmar-email?token=…` (72 h): só consegue logar depois de confirmar o e-mail (até lá, `403 EMAIL_NOT_CONFIRMED`).
 Cada colega recebe por e-mail um link `/definir-senha?token=…` (72 h) e só consegue logar depois de ativar — definir a
 senha pelo link já confirma o e-mail. Um aluno em equipe ativa não pode entrar em outra (RN-03). Cursos são validados
@@ -95,7 +96,7 @@ pelo nome (tabela `cursos`).
 | DELETE | `/teams/:id/stages/:stageId` | admin, mentor | Remove etapa extra sem tarefas/histórico (`409 STAGE_IN_USE`, `STAGE_IS_CURRENT`, `STAGE_IS_DEFAULT`) |
 | POST | `/teams/:id/refer` | admin | `{ force? }` — marca ENCAMINHADA (exige READY_FOR_INOVAMF, salvo `force`) |
 | POST / DELETE | `/teams/:id/mentors` · `/teams/:id/mentors/:mentorId` | admin | `{ mentorId }` |
-| POST | `/teams/:id/members` | líder, mentor, admin | `{ name, email, course, semester? }` — cria a conta (ativação por e-mail) se não existir |
+| POST | `/teams/:id/members` | líder, mentor, admin | `{ name, email, course, semester? }` — cria a conta (ativação por e-mail) se não existir; equipe já com 11 integrantes → `409 TEAM_FULL` |
 | DELETE | `/teams/:id/members/:userId` | líder, mentor, admin | Sai da equipe (`saiu_em`); líder não pode ser removido |
 | POST | `/teams/:id/members/:userId/promote` | líder, mentor, admin | Troca o líder |
 | GET / POST | `/teams/:id/notes` | admin, mentor | RF-10 — `{ data: [{ id, author, content, createdAt, updatedAt }] }` / `{ content }` |
@@ -139,7 +140,7 @@ Evento do calendário: `{ kind: DUE|REMINDER, date, taskId, title, stage, stageN
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | GET | `/reports/dashboard?period=2026/2&status=&includeInactive=` | RF-22 — `{ totals: { teams, activeTeams, readyForInovamf, referred, openTasks, overdueTasks, teamsWithOverdueTasks, newTeamsLast30Days }, byStage, byArea, byStatus, periods }` |
-| GET | `/reports/teams.csv?period=&status=` | RF-23/24 — CSV (`;`, UTF-8 com BOM) para Excel |
+| GET | `/reports/teams.csv?period=&status=` | RF-23/24 — CSV (`;`, UTF-8 com BOM) para Excel; texto que começa com `=`, `+`, `-` ou `@` sai com um apóstrofo na frente, para não virar fórmula |
 
 ### Outros
 | Método | Rota | Descrição |

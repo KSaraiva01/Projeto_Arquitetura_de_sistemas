@@ -37,6 +37,10 @@ interface PendingMove {
   blockers: ApiStageBlocker[];
 }
 
+function mensagemErroQuadro(err: unknown): string {
+  return err instanceof ApiError ? err.message : "Não foi possível carregar o quadro. A API está no ar?";
+}
+
 /**
  * RF-06 + RF-09 — funil das 6 etapas com arrastar e soltar.
  *
@@ -70,28 +74,47 @@ export default function KanbanBoard({
 
   const filterKey = JSON.stringify(filters ?? {});
 
-  const loadBoard = useCallback(async () => {
-    try {
-      const data = await api.board(JSON.parse(filterKey));
-      // Os setState ficam depois do await para o quadro não piscar um estado
-      // intermediário entre "limpando o erro" e "dados novos".
+  // Os dados novos e a limpeza do erro entram juntos, depois da resposta, para
+  // o quadro não piscar um estado intermediário.
+  const aplicarQuadro = useCallback(
+    (data: ApiBoard) => {
       setBoard(data);
       setError(null);
       onBoardChange?.(data);
+    },
+    [onBoardChange],
+  );
+
+  const loadBoard = useCallback(async () => {
+    try {
+      aplicarQuadro(await api.board(JSON.parse(filterKey)));
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Não foi possível carregar o quadro. A API está no ar?",
-      );
+      setError(mensagemErroQuadro(err));
     } finally {
       setLoading(false);
     }
-  }, [filterKey, onBoardChange]);
+  }, [filterKey, aplicarQuadro]);
 
+  // Troca de filtro: a resposta de um filtro antigo que chegue depois é descartada.
   useEffect(() => {
-    void loadBoard();
-  }, [loadBoard]);
+    let descartar = false;
+    api
+      .board(JSON.parse(filterKey))
+      .then(
+        (data) => {
+          if (!descartar) aplicarQuadro(data);
+        },
+        (err) => {
+          if (!descartar) setError(mensagemErroQuadro(err));
+        },
+      )
+      .finally(() => {
+        if (!descartar) setLoading(false);
+      });
+    return () => {
+      descartar = true;
+    };
+  }, [filterKey, aplicarQuadro]);
 
   // Rolagem horizontal: as 6 colunas passam de 1.700px, então as bordas
   // ganham um degradê e um botão enquanto houver mais quadro daquele lado —

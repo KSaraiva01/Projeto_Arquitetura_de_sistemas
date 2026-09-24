@@ -1,14 +1,18 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { Resend } from "resend";
 import { env } from "../../config/env";
+import { ehEmailDeDemonstracao } from "./demonstracao";
 import { htmlParaTexto } from "./templates";
 
 /**
  * Transporte de e-mail (RNF-06). Três drivers:
  *
  *  - console: imprime no terminal (desenvolvimento);
- *  - smtp: qualquer servidor SMTP (Google Workspace/Outlook da faculdade);
+ *  - smtp: qualquer servidor SMTP (Gmail, Google Workspace/Outlook da faculdade);
  *  - resend: API transacional da Resend (https://resend.com), pelo SDK oficial.
+ *
+ * As contas de demonstração do seed (./demonstracao) nunca recebem e-mail de
+ * verdade: com qualquer driver, a mensagem delas só é impressa no log.
  *
  * Quem decide o que enviar e registra o resultado é o serviço de
  * notificações; aqui só se entrega a mensagem — e, se falhar, lança
@@ -29,7 +33,7 @@ export interface Mensagem {
 }
 
 export interface ResultadoEnvio {
-  /** ID da mensagem na Resend ou Message-ID do SMTP; nulo no driver console. */
+  /** ID da mensagem na Resend ou Message-ID do SMTP; nulo quando só foi para o log. */
   idMensagem: string | null;
 }
 
@@ -80,12 +84,13 @@ function falhaPermanenteResend(status: number | null, codigo: string): boolean {
 
 export async function entregarEmail(mensagem: Mensagem): Promise<ResultadoEnvio> {
   const texto = htmlParaTexto(mensagem.html);
+  const demonstracao = ehEmailDeDemonstracao(mensagem.para);
 
-  if (env.MAIL_DRIVER === "console") {
+  if (env.MAIL_DRIVER === "console" || demonstracao) {
     console.info(
       [
         "",
-        "──────────── E-MAIL (driver console) ────────────",
+        `──────────── E-MAIL (${demonstracao ? "conta de demonstração — não enviado" : "driver console"}) ────────────`,
         `Para:    ${mensagem.para}`,
         `Assunto: ${mensagem.assunto}`,
         "",

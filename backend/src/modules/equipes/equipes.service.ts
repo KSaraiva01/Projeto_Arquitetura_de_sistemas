@@ -17,16 +17,17 @@ import {
   processarFilaEmSegundoPlano,
 } from "../notificacoes/notificacoes.service";
 import { incluirCard, incluirIntegrante, paraCard, paraIntegrante, type EquipeCardRow } from "./equipes.dto";
-import type {
-  AddMemberInput,
-  AddStageInput,
-  ChangeStageInput,
-  ListTeamsQuery,
-  ManualReminderInput,
-  NoteInput,
-  RegisterTeamInput,
-  StageBlockersQuery,
-  UpdateTeamInput,
+import {
+  MAX_INTEGRANTES_EQUIPE,
+  type AddMemberInput,
+  type AddStageInput,
+  type ChangeStageInput,
+  type ListTeamsQuery,
+  type ManualReminderInput,
+  type NoteInput,
+  type RegisterTeamInput,
+  type StageBlockersQuery,
+  type UpdateTeamInput,
 } from "./equipes.schemas";
 import {
   carregarJornada,
@@ -802,6 +803,13 @@ export async function adicionarIntegrante(usuario: UsuarioAutenticado, equipeId:
   exigirGestorOuLider(usuario, equipe);
 
   const integrante = await prisma.$transaction(async (tx) => {
+    const ativos = await tx.integranteEquipe.count({ where: { equipeId, saiuEm: null } });
+    if (ativos >= MAX_INTEGRANTES_EQUIPE) {
+      throw new ConflictError(
+        `A equipe já tem o máximo de ${MAX_INTEGRANTES_EQUIPE} integrantes (o líder e ${MAX_INTEGRANTES_EQUIPE - 1} colegas).`,
+        "TEAM_FULL",
+      );
+    }
     const { usuario: aluno } = await garantirAluno(input, equipe.nome, tx);
     const anterior = await tx.integranteEquipe.findUnique({ where: { equipeId_usuarioId: { equipeId, usuarioId: aluno.id } } });
     if (anterior && anterior.saiuEm === null) {
